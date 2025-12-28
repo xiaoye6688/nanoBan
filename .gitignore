@@ -1,0 +1,81 @@
+# 依赖目录
+node_modules
+.pnpm-store
+
+# 构建输出
+dist
+out
+build
+.tmp
+
+# 缓存文件
+.eslintcache
+.vite
+.cache
+*.tsbuildinfo
+
+# 日志文件
+*.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 环境变量文件
+.env
+.env.local
+.env.*.local
+
+# 编辑器和 IDE
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 操作系统文件
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+nul
+
+# Electron 构建产物
+release/
+*.nupkg
+*.exe
+*.dmg
+*.AppImage
+
+# 测试覆盖率
+coverage
+*.lcov
+.nyc_output
+
+# AI 助手和编程工具
+.claude/
+.serena/
+.cursor/
+.continue/
+.windsurf/
+.aider/
+.copilot/
+.codeium/
+.tabnine/
+.sourcegraph/
+.github-copilot/
+.ai/
+*.ai.log
+ai-cache/
+.anthropic/
+.openai/
+
+# 临时文件和调试
+*.tmp
+*.temp
+.DS_Store

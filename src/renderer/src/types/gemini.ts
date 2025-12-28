@@ -37,7 +37,8 @@ export interface ChatMessage {
   id: string
   role: 'user' | 'model'
   content: string
-  images?: string[] // Base64 编码的图片
+  images?: string[] // 存储相对路径的图片文件
+  imageUrls?: string[] // 仅用于渲染的本地文件 URL
   timestamp: number
 }
 

@@ -1,4 +1,3 @@
-import { shell } from 'electron'
 import axios from 'axios'
 import * as http from 'node:http'
 
@@ -35,6 +34,15 @@ export interface OAuthFlowResult {
   token?: OAuthToken
 }
 
+interface OAuthSession {
+  id: string
+  authUrl: string
+  tokenPromise: Promise<OAuthToken>
+  cleanup: () => void
+}
+
+let activeSession: OAuthSession | null = null
+
 /**
  * 生成授权 URL（不自动打开浏览器）
  */
@@ -44,15 +52,58 @@ export function generateAuthUrl(): string {
 }
 
 /**
+ * 创建 OAuth 会话并返回授权链接
+ */
+export function createOAuthSession(): { sessionId: string; authUrl: string } {
+  if (activeSession) {
+    activeSession.cleanup()
+    activeSession = null
+  }
+
+  const state = generateRandomState()
+  const authUrl = buildAuthUrl(state)
+  const sessionId = `oauth_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const { tokenPromise, cleanup } = startCallbackServer(state)
+
+  activeSession = {
+    id: sessionId,
+    authUrl,
+    tokenPromise,
+    cleanup
+  }
+
+  return { sessionId, authUrl }
+}
+
+/**
+ * 等待 OAuth Token 返回
+ */
+export async function waitForOAuthToken(sessionId: string): Promise<OAuthToken> {
+  if (!activeSession || activeSession.id !== sessionId) {
+    throw new Error('没有可用的授权会话')
+  }
+
+  const { tokenPromise, cleanup } = activeSession
+  const timeoutPromise = new Promise<OAuthToken>((_, reject) => {
+    setTimeout(() => {
+      cleanup()
+      reject(new Error('授权超时（5分钟）'))
+    }, 5 * 60 * 1000)
+  })
+
+  try {
+    return await Promise.race([tokenPromise, timeoutPromise])
+  } finally {
+    cleanup()
+    activeSession = null
+  }
+}
+
+/**
  * 启动 Antigravity OAuth 2.0 授权流程
  */
 export async function startOAuthFlow(openBrowser = true): Promise<OAuthToken> {
-  const state = generateRandomState()
-  const authUrl = buildAuthUrl(state)
-
-  // 启动本地回调服务器并获取 Promise
-  const serverPromise = startCallbackServer(state)
-  const { cleanup } = await serverPromise
+  const { sessionId, authUrl } = createOAuthSession()
 
   // 打印授权 URL
   console.log('\n==============================================')
@@ -63,43 +114,31 @@ export async function startOAuthFlow(openBrowser = true): Promise<OAuthToken> {
     `等待授权回调到 http://localhost:${ANTIGRAVITY_OAUTH_CONFIG.callbackPort}/oauth-callback ...`
   )
 
-  // 可选：自动打开浏览器
   if (openBrowser) {
-    try {
-      await shell.openExternal(authUrl)
-      console.log('已在默认浏览器中打开授权页面')
-    } catch {
-      console.log('无法自动打开浏览器，请手动复制上面的链接')
-    }
+    console.log('已生成授权链接，可由调用方自行打开浏览器')
   }
 
-  // 创建超时 Promise
-  const timeoutPromise = new Promise<OAuthToken>((_, reject) => {
-    setTimeout(
-      () => {
-        cleanup()
-        reject(new Error('授权超时（5分钟）'))
-      },
-      5 * 60 * 1000
-    )
-  })
-
-  // 竞争：要么获取到 token，要么超时
-  try {
-    return await Promise.race([serverPromise.then((result) => result.token), timeoutPromise])
-  } finally {
-    cleanup()
-  }
+  return waitForOAuthToken(sessionId)
 }
 
 /**
  * 启动本地回调服务器
  */
-async function startCallbackServer(
-  expectedState: string
-): Promise<{ token: OAuthToken; cleanup: () => void }> {
-  return new Promise((resolve, reject) => {
-    const server = http.createServer(async (req, res) => {
+function startCallbackServer(expectedState: string): {
+  tokenPromise: Promise<OAuthToken>
+  cleanup: () => void
+} {
+  let server: http.Server | null = null
+  const cleanup = (): void => {
+    if (server) {
+      server.close()
+      server = null
+      console.log('回调服务器已关闭')
+    }
+  }
+
+  const tokenPromise = new Promise<OAuthToken>((resolve, reject) => {
+    server = http.createServer(async (req, res) => {
       if (req.url?.startsWith('/oauth-callback')) {
         try {
           const url = new URL(req.url, `http://localhost:${ANTIGRAVITY_OAUTH_CONFIG.callbackPort}`)
@@ -170,13 +209,7 @@ async function startCallbackServer(
           console.log('收到授权码，正在交换访问令牌...')
           const token = await exchangeCodeForToken(code)
           console.log('授权成功！')
-          resolve({
-            token,
-            cleanup: () => {
-              server.close()
-              console.log('回调服务器已关闭')
-            }
-          })
+          resolve(token)
         } catch (err: unknown) {
           const errorMessage = err instanceof Error ? err.message : '未知错误'
           console.error('处理回调失败:', err)
@@ -202,6 +235,8 @@ async function startCallbackServer(
       console.log(`回调服务器已启动在端口 ${ANTIGRAVITY_OAUTH_CONFIG.callbackPort}`)
     })
   })
+
+  return { tokenPromise, cleanup }
 }
 
 /**

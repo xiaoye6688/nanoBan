@@ -21,6 +21,12 @@ interface RequestPart {
   }
 }
 
+export interface ConversationMessage {
+  role: 'user' | 'model'
+  content?: string
+  images?: string[]
+}
+
 interface AntigravityRequest {
   model: string
   userAgent: string
@@ -99,6 +105,13 @@ export class GeminiAPI {
     return `-${Math.abs(hash)}`
   }
 
+  private normalizeSessionId(sessionId?: string, fallbackPrompt?: string): string {
+    if (sessionId && sessionId.trim() !== '') {
+      return sessionId.replace(/\.json$/i, '')
+    }
+    return fallbackPrompt ? this.generateSessionId(fallbackPrompt) : `-${Date.now()}`
+  }
+
   /**
    * Decide whether to try another endpoint after a failure.
    */
@@ -131,23 +144,14 @@ export class GeminiAPI {
   private buildAntigravityRequest(
     prompt: string,
     imageConfig: ImageConfig,
-    referenceImages?: string[]
+    referenceImages?: string[],
+    options?: { sessionId?: string; history?: ConversationMessage[] }
   ): AntigravityRequest {
     // 构建内容部分
-    const parts: RequestPart[] = [{ text: prompt }]
-
-    // 如果有参考图片，添加到请求中
-    if (referenceImages && referenceImages.length > 0) {
-      for (const imageBase64 of referenceImages) {
-        const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '')
-        parts.push({
-          inlineData: {
-            data: base64Data,
-            mimeType: 'image/jpeg'
-          }
-        })
-      }
-    }
+    const contents =
+      options?.history && options.history.length > 0
+        ? this.buildContentsFromHistory(options.history)
+        : this.buildContentsFromPrompt(prompt, referenceImages)
 
     const projectId = this.authConfig?.projectId || this.generateProjectId()
 
@@ -159,13 +163,8 @@ export class GeminiAPI {
       project: projectId,
       requestId: this.generateRequestId(),
       request: {
-        sessionId: this.generateSessionId(prompt),
-        contents: [
-          {
-            role: 'user',
-            parts
-          }
-        ],
+        sessionId: this.normalizeSessionId(options?.sessionId, prompt),
+        contents,
         generationConfig: {
           responseModalities: ['TEXT', 'IMAGE'],
           imageConfig: {
@@ -182,19 +181,84 @@ export class GeminiAPI {
     }
   }
 
+  private buildContentsFromPrompt(
+    prompt: string,
+    referenceImages?: string[]
+  ): Array<{ role: string; parts: RequestPart[] }> {
+    const parts: RequestPart[] = [{ text: prompt }]
+
+    if (referenceImages && referenceImages.length > 0) {
+      for (const imageBase64 of referenceImages) {
+        const { data, mimeType } = this.parseImageData(imageBase64)
+        parts.push({
+          inlineData: {
+            data,
+            mimeType
+          }
+        })
+      }
+    }
+
+    return [
+      {
+        role: 'user',
+        parts
+      }
+    ]
+  }
+
+  private buildContentsFromHistory(
+    history: ConversationMessage[]
+  ): Array<{ role: string; parts: RequestPart[] }> {
+    return history
+      .map((message) => {
+        const parts: RequestPart[] = []
+        if (message.content) {
+          parts.push({ text: message.content })
+        }
+        if (message.images && message.images.length > 0) {
+          for (const imageBase64 of message.images) {
+            const { data, mimeType } = this.parseImageData(imageBase64)
+            parts.push({
+              inlineData: {
+                data,
+                mimeType
+              }
+            })
+          }
+        }
+        return { role: message.role, parts }
+      })
+      .filter((message) => message.parts.length > 0)
+  }
+
+  private parseImageData(imageBase64: string): { data: string; mimeType: string } {
+    const match = imageBase64.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/)
+    if (match) {
+      return { mimeType: match[1], data: match[2] }
+    }
+    return { mimeType: 'image/jpeg', data: imageBase64 }
+  }
+
   /**
    * 使用 Antigravity API 生成图像
    */
   async generateImage(
     prompt: string,
     imageConfig: ImageConfig,
-    referenceImages?: string[]
+    referenceImages?: string[],
+    options?: { sessionId?: string; history?: ConversationMessage[] }
   ): Promise<{ text?: string; images: string[] }> {
     if (!this.authConfig) {
       throw new Error('API 未初始化，请先设置 OAuth 认证')
     }
 
-    const requestBody = this.buildAntigravityRequest(prompt, imageConfig, referenceImages)
+    const requestBody = this.buildAntigravityRequest(
+      prompt,
+      imageConfig,
+      referenceImages,
+      options
+    )
 
     // 尝试多个 base URL
     let lastError: unknown = null

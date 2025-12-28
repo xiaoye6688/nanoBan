@@ -12,20 +12,20 @@
             <el-button type="danger" size="small" @click="handleLogout">登出</el-button>
           </template>
           <template v-else>
-            <el-button type="primary" size="small" @click="showAuthDialog = true"
-              >设置认证</el-button
-            >
+            <el-tag type="warning">未认证</el-tag>
           </template>
+          <el-button type="primary" size="small" @click="showAuthDialog = true">设置</el-button>
         </div>
       </div>
     </el-header>
 
     <!-- 主内容区域 -->
     <el-container class="main-container">
-      <!-- 左侧参数配置面板 -->
-      <el-aside width="320px" class="config-panel">
+      <!-- 左侧面板 -->
+      <el-aside width="360px" class="side-panel">
         <el-scrollbar>
-          <div class="config-content">
+          <div class="side-content">
+            <SessionPanel />
             <ConfigPanel />
           </div>
         </el-scrollbar>
@@ -37,7 +37,7 @@
       </el-main>
     </el-container>
 
-    <!-- 认证对话框 -->
+    <!-- 设置对话框 -->
     <AuthDialog v-model="showAuthDialog" />
   </div>
 </template>
@@ -50,6 +50,7 @@ import { useConfigStore } from './stores/config'
 import { useChatStore } from './stores/chat'
 import ChatView from './views/ChatView.vue'
 import ConfigPanel from './components/ConfigPanel.vue'
+import SessionPanel from './components/SessionPanel.vue'
 import AuthDialog from './components/AuthDialog.vue'
 
 const authStore = useAuthStore()
@@ -59,11 +60,11 @@ const chatStore = useChatStore()
 const showAuthDialog = ref(false)
 
 // 初始化应用
-onMounted(() => {
+onMounted(async () => {
   // 从本地存储加载配置
-  authStore.loadFromStorage()
-  configStore.loadConfig()
-  chatStore.loadMessages()
+  await authStore.loadFromStorage()
+  await configStore.loadConfig()
+  await chatStore.initialize()
 })
 
 // 处理登出
@@ -114,14 +115,17 @@ const handleLogout = (): void => {
   overflow: hidden;
 }
 
-.config-panel {
+.side-panel {
   background: #fff;
   border-right: 1px solid #e4e7ed;
   overflow: hidden;
 }
 
-.config-content {
-  padding: 20px;
+.side-content {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .chat-area {

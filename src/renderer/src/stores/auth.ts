@@ -5,52 +5,52 @@ import type { OAuthToken } from '../types/gemini'
 
 export const useAuthStore = defineStore('auth', () => {
   // 状态
-  const apiKey = ref<string>('')
   const oauthToken = ref<OAuthToken | null>(null)
-  const isAuthenticated = ref<boolean>(false)
+  const auths = ref<
+    Array<{
+      id: string
+      label: string
+      email?: string
+      projectId?: string
+      expiresAt: number
+      tokenType: string
+      createdAt: number
+      updatedAt: number
+    }>
+  >([])
+  const activeAuthId = ref<string | null>(null)
+  const pendingAuthUrl = ref<string>('')
+  const pendingSessionId = ref<string | null>(null)
+  const isAuthorizing = ref<boolean>(false)
 
   // 计算属性
-  const hasApiKey = computed(() => apiKey.value !== '')
   const hasValidToken = computed(() => {
     if (!oauthToken.value) return false
     return Date.now() < oauthToken.value.expiresAt
   })
+  const isAuthenticated = computed(() => hasValidToken.value)
+  const activeAuth = computed(() => auths.value.find((auth) => auth.id === activeAuthId.value))
 
   // 方法
 
   /**
-   * 设置 API Key
-   * 注意：当前版本仅支持 Antigravity OAuth 认证，API Key 功能已禁用
+   * 刷新授权列表
    */
-  function setApiKey(key: string): void {
-    apiKey.value = key
-    isAuthenticated.value = true
-    // 注意：新的 API 客户端只支持 Antigravity OAuth，不支持 API Key
-    console.warn('当前版本仅支持 Antigravity OAuth 认证，请使用 OAuth 登录')
-    // 保存到本地存储
-    localStorage.setItem('gemini_api_key', key)
-  }
-
-  /**
-   * 清除 API Key
-   */
-  function clearApiKey(): void {
-    apiKey.value = ''
-    isAuthenticated.value = false
-    localStorage.removeItem('gemini_api_key')
+  async function loadAuths(): Promise<void> {
+    auths.value = await window.api.listAuths()
   }
 
   /**
    * 设置 OAuth Token
    */
-  function setOAuthToken(token: OAuthToken): void {
+  async function setOAuthToken(token: OAuthToken, authId?: string): Promise<void> {
     oauthToken.value = token
-    isAuthenticated.value = true
-    // 保存到本地存储
-    localStorage.setItem('oauth_token', JSON.stringify(token))
+    if (authId) {
+      activeAuthId.value = authId
+    }
 
     // 使用 Antigravity OAuth 认证初始化 API
-    if (token.accessToken) {
+    if (token.accessToken && Date.now() < token.expiresAt) {
       geminiAPI.setAntigravityAuth(token.accessToken, token.projectId)
     }
   }
@@ -60,55 +60,55 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function clearOAuthToken(): void {
     oauthToken.value = null
-    localStorage.removeItem('oauth_token')
   }
 
   /**
    * 从本地存储恢复认证信息
    */
-  function loadFromStorage(): void {
-    // 尝试加载 API Key
-    const savedApiKey = localStorage.getItem('gemini_api_key')
-    if (savedApiKey) {
-      setApiKey(savedApiKey)
-    }
-
-    // 尝试加载 OAuth Token
-    const savedToken = localStorage.getItem('oauth_token')
-    if (savedToken) {
+  async function loadFromStorage(): Promise<void> {
+    await loadAuths()
+    const settings = await window.api.getSettings()
+    if (settings.activeAuthId) {
       try {
-        const token = JSON.parse(savedToken) as OAuthToken
-        // 检查 token 是否过期
-        if (Date.now() < token.expiresAt) {
-          setOAuthToken(token)
-        } else {
-          clearOAuthToken()
-        }
+        await selectAuth(settings.activeAuthId)
       } catch (error) {
-        console.error('解析 OAuth Token 失败:', error)
-        clearOAuthToken()
+        console.error('加载默认授权失败:', error)
       }
+    } else if (auths.value.length > 0) {
+      await selectAuth(auths.value[0].id)
     }
   }
 
   /**
-   * 启动 OAuth 2.0 授权流程
+   * 创建 OAuth 2.0 授权链接
    */
-  async function startOAuthFlow(): Promise<void> {
-    // 这个功能需要通过 Electron IPC 与主进程通信
-    // 主进程会打开浏览器窗口进行 OAuth 授权
-    if (window.api) {
-      try {
-        const token = await window.api.startOAuth()
-        if (token) {
-          setOAuthToken(token)
-        }
-      } catch (error) {
+  async function createOAuthLink(): Promise<string> {
+    const session = await window.api.createOAuthSession()
+    pendingSessionId.value = session.sessionId
+    pendingAuthUrl.value = session.authUrl
+    void autoCompleteOAuth(session.sessionId)
+    return session.authUrl
+  }
+
+  /**
+   * 等待 OAuth 授权完成并保存（自动监听回调）
+   */
+  async function autoCompleteOAuth(sessionId: string): Promise<void> {
+    isAuthorizing.value = true
+    try {
+      const token = await window.api.waitOAuthToken(sessionId)
+      if (pendingSessionId.value !== sessionId) return
+      await saveOAuthToken(token)
+    } catch (error) {
+      if (pendingSessionId.value === sessionId) {
         console.error('OAuth 授权失败:', error)
-        throw error
       }
-    } else {
-      throw new Error('Electron API 不可用')
+    } finally {
+      if (pendingSessionId.value === sessionId) {
+        pendingSessionId.value = null
+        pendingAuthUrl.value = ''
+        isAuthorizing.value = false
+      }
     }
   }
 
@@ -120,16 +120,17 @@ export const useAuthStore = defineStore('auth', () => {
       throw new Error('没有可用的 Refresh Token')
     }
 
-    if (window.api) {
-      try {
-        const newToken = await window.api.refreshOAuthToken(oauthToken.value.refreshToken)
-        if (newToken) {
-          setOAuthToken(newToken)
-        }
-      } catch (error) {
-        console.error('刷新 Token 失败:', error)
-        throw error
+    try {
+      const newToken = await window.api.refreshOAuthToken(oauthToken.value.refreshToken)
+      if (newToken) {
+        await saveOAuthToken(
+          { ...newToken, email: oauthToken.value.email, projectId: oauthToken.value.projectId },
+          activeAuthId.value || undefined
+        )
       }
+    } catch (error) {
+      console.error('刷新 Token 失败:', error)
+      throw error
     }
   }
 
@@ -137,27 +138,77 @@ export const useAuthStore = defineStore('auth', () => {
    * 登出
    */
   function logout(): void {
-    clearApiKey()
     clearOAuthToken()
-    isAuthenticated.value = false
+    activeAuthId.value = null
+    void window.api.updateSettings({ activeAuthId: '' })
+  }
+
+  async function saveOAuthToken(token: OAuthToken, authId?: string): Promise<void> {
+    const label = token.email || token.projectId || 'Antigravity OAuth'
+    const saved = await window.api.saveAuth({
+      id: authId,
+      type: 'antigravity',
+      label,
+      email: token.email,
+      projectId: token.projectId,
+      accessToken: token.accessToken,
+      refreshToken: token.refreshToken,
+      expiresAt: token.expiresAt,
+      tokenType: token.tokenType
+    })
+    await loadAuths()
+    await selectAuth(saved.id)
+  }
+
+  async function selectAuth(authId: string): Promise<void> {
+    const record = await window.api.readAuth(authId)
+    if (!record) {
+      throw new Error('授权信息不存在')
+    }
+    activeAuthId.value = authId
+    await window.api.updateSettings({ activeAuthId: authId })
+    await setOAuthToken({
+      accessToken: record.accessToken,
+      refreshToken: record.refreshToken,
+      expiresAt: record.expiresAt,
+      tokenType: record.tokenType,
+      email: record.email,
+      projectId: record.projectId
+    })
+  }
+
+  async function removeAuth(authId: string): Promise<void> {
+    await window.api.deleteAuth(authId)
+    auths.value = auths.value.filter((auth) => auth.id !== authId)
+    if (activeAuthId.value === authId) {
+      activeAuthId.value = null
+      clearOAuthToken()
+      void window.api.updateSettings({ activeAuthId: '' })
+    }
   }
 
   return {
     // 状态
-    apiKey,
     oauthToken,
     isAuthenticated,
+    auths,
+    activeAuthId,
+    activeAuth,
+    pendingAuthUrl,
+    pendingSessionId,
+    isAuthorizing,
     // 计算属性
-    hasApiKey,
     hasValidToken,
     // 方法
-    setApiKey,
-    clearApiKey,
     setOAuthToken,
     clearOAuthToken,
+    loadAuths,
     loadFromStorage,
-    startOAuthFlow,
+    createOAuthLink,
     refreshOAuthToken,
-    logout
+    logout,
+    saveOAuthToken,
+    selectAuth,
+    removeAuth
   }
 })

@@ -20,11 +20,11 @@
             </div>
 
             <!-- 图片内容 -->
-            <div v-if="message.images && message.images.length > 0" class="message-images">
-              <div v-for="(img, idx) in message.images" :key="idx" class="message-image-wrapper">
+            <div v-if="message.imageUrls && message.imageUrls.length > 0" class="message-images">
+              <div v-for="(img, idx) in message.imageUrls" :key="idx" class="message-image-wrapper">
                 <el-image
                   :src="img"
-                  :preview-src-list="message.images"
+                  :preview-src-list="message.imageUrls"
                   :initial-index="idx"
                   fit="cover"
                   class="message-image"
@@ -37,7 +37,7 @@
                     size="small"
                     type="primary"
                     title="保存图片"
-                    @click="handleSaveImage(img, message.id, idx)"
+                    @click="handleSaveImage(message.images?.[idx] || img, message.id, idx)"
                   />
                 </div>
               </div>
@@ -191,13 +191,15 @@ const formatTime = (timestamp: number): string => {
 
 // 保存图片
 const handleSaveImage = async (
-  imageBase64: string,
+  imageSource: string,
   messageId: string,
   imageIndex: number
 ): Promise<void> => {
   try {
     const defaultFileName = `gemini_image_${messageId}_${imageIndex + 1}.png`
-    const result = await window.api.saveImage(imageBase64, defaultFileName)
+    const result = imageSource.startsWith('data:')
+      ? await window.api.saveImage(imageSource, defaultFileName)
+      : await window.api.exportImage(imageSource, defaultFileName)
 
     if (result.success) {
       ElMessage.success('图片保存成功')
@@ -228,11 +230,23 @@ watch(
   display: flex;
   flex-direction: column;
   background: #fff;
+  min-height: 0;
 }
 
 .messages-container {
   flex: 1;
   padding: 20px;
+  min-height: 0;
+}
+
+.messages-container :deep(.el-scrollbar__wrap) {
+  min-height: 0;
+}
+
+.messages-container :deep(.el-scrollbar__view) {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .messages-list {
@@ -399,13 +413,25 @@ watch(
   display: flex;
   gap: 12px;
   align-items: flex-end;
+  width: 100%;
+}
+
+.input-controls :deep(.el-input) {
+  flex: 1;
+  min-width: 0;
+}
+
+.input-controls :deep(.el-upload),
+.input-controls :deep(.el-button) {
+  flex-shrink: 0;
 }
 
 :deep(.el-textarea__inner) {
   resize: none;
 }
 
-:deep(.el-empty) {
-  padding: 100px 0;
+.messages-container :deep(.el-empty) {
+  padding: 0;
+  margin: auto;
 }
 </style>

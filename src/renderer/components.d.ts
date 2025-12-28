@@ -32,6 +32,7 @@ declare module 'vue' {
     ElLink: typeof import('element-plus/es')['ElLink']
     ElMain: typeof import('element-plus/es')['ElMain']
     ElOption: typeof import('element-plus/es')['ElOption']
+    ElPopconfirm: typeof import('element-plus/es')['ElPopconfirm']
     ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElScrollbar: typeof import('element-plus/es')['ElScrollbar']
@@ -41,6 +42,7 @@ declare module 'vue' {
     ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
     ElUpload: typeof import('element-plus/es')['ElUpload']
+    SessionPanel: typeof import('./src/components/SessionPanel.vue')['default']
     Versions: typeof import('./src/components/Versions.vue')['default']
   }
 }

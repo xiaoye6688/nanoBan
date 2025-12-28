@@ -72,7 +72,7 @@ export const useConfigStore = defineStore('config', () => {
    */
   function setImageSize(size: ImageSize): void {
     imageSize.value = size
-    saveConfig()
+    void saveConfig()
   }
 
   /**
@@ -80,7 +80,7 @@ export const useConfigStore = defineStore('config', () => {
    */
   function setAspectRatio(ratio: AspectRatio): void {
     aspectRatio.value = ratio
-    saveConfig()
+    void saveConfig()
   }
 
   /**
@@ -89,7 +89,7 @@ export const useConfigStore = defineStore('config', () => {
   function applyPreset(preset: PresetConfig): void {
     imageSize.value = preset.imageSize
     aspectRatio.value = preset.aspectRatio
-    saveConfig()
+    void saveConfig()
   }
 
   /**
@@ -105,27 +105,26 @@ export const useConfigStore = defineStore('config', () => {
   /**
    * 保存配置到本地存储
    */
-  function saveConfig(): void {
-    const config = {
+  async function saveConfig(): Promise<void> {
+    await window.api.updateSettings({
       imageSize: imageSize.value,
       aspectRatio: aspectRatio.value
-    }
-    localStorage.setItem('gemini_config', JSON.stringify(config))
+    })
   }
 
   /**
    * 从本地存储加载配置
    */
-  function loadConfig(): void {
-    const saved = localStorage.getItem('gemini_config')
-    if (saved) {
-      try {
-        const config = JSON.parse(saved)
-        imageSize.value = config.imageSize || '1K'
-        aspectRatio.value = config.aspectRatio || '1:1'
-      } catch (error) {
-        console.error('加载配置失败:', error)
+  async function loadConfig(): Promise<void> {
+    try {
+      const settings = await window.api.getSettings()
+      imageSize.value = (settings.imageSize as ImageSize) || '1K'
+      aspectRatio.value = (settings.aspectRatio as AspectRatio) || '1:1'
+      if (Array.isArray(settings.presets)) {
+        presets.value = settings.presets as PresetConfig[]
       }
+    } catch (error) {
+      console.error('加载配置失败:', error)
     }
   }
 
@@ -134,7 +133,7 @@ export const useConfigStore = defineStore('config', () => {
    */
   function addPreset(preset: PresetConfig): void {
     presets.value.push(preset)
-    savePresets()
+    void savePresets()
   }
 
   /**
@@ -142,27 +141,29 @@ export const useConfigStore = defineStore('config', () => {
    */
   function removePreset(index: number): void {
     presets.value.splice(index, 1)
-    savePresets()
+    void savePresets()
   }
 
   /**
    * 保存预设到本地存储
    */
-  function savePresets(): void {
-    localStorage.setItem('gemini_presets', JSON.stringify(presets.value))
+  async function savePresets(): Promise<void> {
+    await window.api.updateSettings({
+      presets: presets.value
+    })
   }
 
   /**
    * 从本地存储加载预设
    */
-  function loadPresets(): void {
-    const saved = localStorage.getItem('gemini_presets')
-    if (saved) {
-      try {
-        presets.value = JSON.parse(saved)
-      } catch (error) {
-        console.error('加载预设失败:', error)
+  async function loadPresets(): Promise<void> {
+    try {
+      const settings = await window.api.getSettings()
+      if (Array.isArray(settings.presets)) {
+        presets.value = settings.presets as PresetConfig[]
       }
+    } catch (error) {
+      console.error('加载预设失败:', error)
     }
   }
 

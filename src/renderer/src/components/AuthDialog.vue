@@ -1,6 +1,12 @@
 <template>
-  <el-dialog v-model="dialogVisible" title="设置" width="640px" :before-close="handleClose">
-    <el-tabs v-model="activeTab">
+  <el-dialog
+    v-model="dialogVisible"
+    title="设置"
+    width="600px"
+    :before-close="handleClose"
+    destroy-on-close
+  >
+    <el-tabs v-model="activeTab" class="settings-tabs">
       <el-tab-pane label="授权设置" name="auth">
         <div class="section">
           <div class="section-title">已保存的授权</div>
@@ -47,38 +53,51 @@
 
         <div class="section">
           <div class="section-title">新增授权</div>
-          <el-alert type="info" :closable="false" show-icon>
-            点击“生成授权链接”后，将得到一个授权地址。你可以选择打开浏览器或复制链接进行授权。
-          </el-alert>
-
           <div class="auth-link-actions">
             <el-button type="success" :loading="linkLoading" @click="handleCreateAuthLink">
               生成授权链接
             </el-button>
             <el-button
               :disabled="!authStore.pendingAuthUrl"
-              @click="handleOpenAuthLink"
               :icon="Link"
+              @click="handleOpenAuthLink"
             >
               打开链接
             </el-button>
             <el-button
               :disabled="!authStore.pendingAuthUrl"
-              @click="handleCopyAuthLink"
               :icon="CopyDocument"
+              @click="handleCopyAuthLink"
             >
               复制链接
             </el-button>
           </div>
 
           <el-input
+            v-if="authStore.pendingAuthUrl"
             v-model="authStore.pendingAuthUrl"
             readonly
             placeholder="等待生成授权链接"
             class="auth-link-input"
           />
 
-          <el-alert v-if="authStore.isAuthorizing" type="warning" :closable="false" show-icon>
+          <el-alert
+            v-if="!authStore.pendingAuthUrl"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-top: 10px"
+          >
+            点击“生成授权链接”后，将得到一个授权地址。选择打开浏览器或复制链接进行授权。
+          </el-alert>
+
+          <el-alert
+            v-if="authStore.isAuthorizing"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-top: 10px"
+          >
             已生成授权链接，等待浏览器回调中…
           </el-alert>
         </div>
@@ -87,13 +106,69 @@
       <el-tab-pane label="常规设置" name="general">
         <div class="section">
           <div class="section-title">存储目录</div>
-          <el-input v-model="storagePath" readonly />
-          <div class="storage-actions">
-            <el-button type="primary" @click="handleSelectStorage">选择目录</el-button>
+
+          <div class="storage-path-control">
+            <el-input v-model="storagePath" readonly placeholder="选择存储路径">
+              <template #append>
+                <el-button :icon="Folder" title="选择文件夹" @click="handleSelectStorage" />
+              </template>
+            </el-input>
           </div>
-          <el-alert type="info" :closable="false" show-icon>
+
+          <div class="setting-item">
+            <div class="setting-label">
+              <span>迁移文件</span>
+              <el-tooltip
+                content="开启后，修改存储目录时会自动将旧目录下的聊天记录和图片迁移到新目录。"
+                placement="top"
+              >
+                <el-icon class="help-icon"><QuestionFilled /></el-icon>
+              </el-tooltip>
+            </div>
+            <el-switch v-model="migrateFiles" />
+          </div>
+
+          <el-alert type="info" :closable="false" show-icon style="margin-top: 8px">
             聊天记录、图片与授权文件将保存在该目录下。
           </el-alert>
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane label="数据管理" name="data">
+        <div class="section">
+          <div class="section-title">数据维护</div>
+          <div class="data-actions-grid">
+            <div class="data-card">
+              <div class="data-card-icon export">
+                <el-icon><Download /></el-icon>
+              </div>
+              <div class="data-card-content">
+                <div class="title">导出数据</div>
+                <div class="desc">备份所有对话记录</div>
+              </div>
+              <el-button size="small" @click="handleExportMessages">导出</el-button>
+            </div>
+
+            <div class="data-card">
+              <div class="data-card-icon delete">
+                <el-icon><Delete /></el-icon>
+              </div>
+              <div class="data-card-content">
+                <div class="title">清空数据</div>
+                <div class="desc">删除所有历史记录</div>
+              </div>
+              <el-popconfirm
+                title="确定清空所有数据？不可恢复。"
+                confirm-button-text="清空"
+                cancel-button-text="取消"
+                @confirm="handleClearMessages"
+              >
+                <template #reference>
+                  <el-button size="small" type="danger" plain>清空</el-button>
+                </template>
+              </el-popconfirm>
+            </div>
+          </div>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -102,8 +177,15 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { CopyDocument, Link } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import {
+  CopyDocument,
+  Link,
+  Folder,
+  QuestionFilled,
+  Download,
+  Delete
+} from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
 
@@ -126,6 +208,7 @@ const dialogVisible = computed({
 const activeTab = ref('auth')
 const linkLoading = ref(false)
 const storagePath = ref('')
+const migrateFiles = ref(true) // Default to true
 
 watch(
   () => dialogVisible.value,
@@ -207,20 +290,8 @@ const handleSelectStorage = async (): Promise<void> => {
   const selected = await window.api.selectStoragePath()
   if (!selected) return
 
-  let migrate = false
   try {
-    await ElMessageBox.confirm('是否迁移旧目录中的聊天记录、图片和授权文件？', '迁移数据', {
-      confirmButtonText: '迁移',
-      cancelButtonText: '不迁移',
-      type: 'warning'
-    })
-    migrate = true
-  } catch {
-    migrate = false
-  }
-
-  try {
-    const settings = await window.api.setStoragePath(selected, migrate)
+    const settings = await window.api.setStoragePath(selected, migrateFiles.value)
     storagePath.value = settings.storagePath
     await chatStore.initialize()
     await authStore.loadAuths()
@@ -245,22 +316,52 @@ const formatExpires = (expiresAt: number): string => {
 const handleClose = (): void => {
   dialogVisible.value = false
 }
+
+// 清空对话历史
+const handleClearMessages = async (): Promise<void> => {
+  try {
+    chatStore.clearMessages()
+    ElMessage.success('对话历史已清空')
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+// 导出对话
+const handleExportMessages = (): void => {
+  try {
+    const json = chatStore.exportMessages()
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `gemini-chat-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('对话已导出')
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : '导出失败'
+    ElMessage.error(errorMessage)
+  }
+}
 </script>
 
 <style scoped>
 :deep(.el-dialog__body) {
-  padding: 20px 24px 28px;
+  padding: 10px 24px 24px;
 }
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .section-title {
   font-weight: 600;
   color: #303133;
+  font-size: 14px;
+  margin-bottom: 4px;
 }
 
 .auth-list {
@@ -273,9 +374,14 @@ const handleClose = (): void => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 12px 16px;
   border: 1px solid #e4e7ed;
   border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.auth-item:hover {
+  border-color: #c0c4cc;
 }
 
 .auth-item.active {
@@ -286,8 +392,7 @@ const handleClose = (): void => {
 .auth-info {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-width: 320px;
+  gap: 4px;
 }
 
 .auth-name {
@@ -298,37 +403,110 @@ const handleClose = (): void => {
 .auth-meta {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   font-size: 12px;
   color: #909399;
 }
 
 .auth-actions {
   display: flex;
-  align-items: center;
   gap: 8px;
 }
 
 .auth-link-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
 
 .auth-link-input {
-  margin-bottom: 8px;
-}
-
-.storage-actions {
-  display: flex;
-  gap: 12px;
+  margin-top: 8px;
 }
 
 .empty-state {
-  padding: 16px 0;
+  padding: 24px 0;
   text-align: center;
   color: #909399;
+  font-size: 13px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+
+.setting-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.help-icon {
+  color: #909399;
+  font-size: 16px;
+  cursor: help;
+}
+
+.data-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.data-card {
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.2s;
+}
+
+.data-card:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+}
+
+.data-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.data-card-icon.export {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.data-card-icon.delete {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+.data-card-content {
+  flex: 1;
+}
+
+.data-card-content .title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.data-card-content .desc {
   font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
 }
 </style>

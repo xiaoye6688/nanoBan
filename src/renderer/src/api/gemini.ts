@@ -10,7 +10,10 @@ const ANTIGRAVITY_BASE_URLS = [
 
 interface AntigravityAuthConfig {
   accessToken: string
+  refreshToken?: string
+  expiresAt: number
   projectId?: string
+  onTokenRefresh?: (newToken: { accessToken: string; expiresAt: number }) => Promise<void>
 }
 
 interface RequestPart {
@@ -19,12 +22,14 @@ interface RequestPart {
     data: string
     mimeType: string
   }
+  thoughtSignature?: string // Gemini 3 需要的 thought signature
 }
 
 export interface ConversationMessage {
   role: 'user' | 'model'
   content?: string
   images?: string[]
+  thoughtSignatures?: string[] // 用于传递每个 part 的 thoughtSignature
 }
 
 interface AntigravityRequest {
@@ -59,10 +64,19 @@ export class GeminiAPI {
   /**
    * 设置 Antigravity OAuth 认证配置
    * @param accessToken - OAuth access token
+   * @param refreshToken - OAuth refresh token
+   * @param expiresAt - Token 过期时间戳
    * @param projectId - GCP project ID
+   * @param onTokenRefresh - Token 刷新回调
    */
-  setAntigravityAuth(accessToken: string, projectId?: string): void {
-    this.authConfig = { accessToken, projectId }
+  setAntigravityAuth(
+    accessToken: string,
+    refreshToken: string,
+    expiresAt: number,
+    projectId?: string,
+    onTokenRefresh?: (newToken: { accessToken: string; expiresAt: number }) => Promise<void>
+  ): void {
+    this.authConfig = { accessToken, refreshToken, expiresAt, projectId, onTokenRefresh }
   }
 
   /**
@@ -70,6 +84,80 @@ export class GeminiAPI {
    */
   isInitialized(): boolean {
     return this.authConfig !== null && this.authConfig.accessToken !== ''
+  }
+
+  /**
+   * 确保 Access Token 有效（自动刷新）
+   * 如果 token 将在 50 分钟内过期，自动刷新
+   */
+  private async ensureValidToken(): Promise<void> {
+    if (!this.authConfig) {
+      throw new Error('API 未初始化，请先设置 OAuth 认证')
+    }
+
+    const REFRESH_SKEW = 50 * 60 * 1000 // 50分钟（毫秒）
+    const now = Date.now()
+    const timeUntilExpiry = this.authConfig.expiresAt - now
+
+    // 如果 token 还有效且不在刷新窗口期内，直接返回
+    if (timeUntilExpiry > REFRESH_SKEW) {
+      return
+    }
+
+    // 需要刷新 token
+    console.log('Token 即将过期，自动刷新...')
+    if (!this.authConfig.refreshToken) {
+      throw new Error('没有可用的 Refresh Token')
+    }
+
+    try {
+      const newToken = await this.refreshAccessToken(this.authConfig.refreshToken)
+
+      // 更新本地配置
+      this.authConfig.accessToken = newToken.accessToken
+      this.authConfig.expiresAt = newToken.expiresAt
+
+      // 通知外部更新存储
+      if (this.authConfig.onTokenRefresh) {
+        await this.authConfig.onTokenRefresh(newToken)
+      }
+
+      console.log('Token 刷新成功')
+    } catch (error) {
+      console.error('自动刷新 Token 失败:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 刷新 Access Token
+   */
+  private async refreshAccessToken(
+    refreshToken: string
+  ): Promise<{ accessToken: string; expiresAt: number }> {
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        client_id: '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com',
+        client_secret: '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',
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`刷新 Token 失败: ${errorText}`)
+    }
+
+    const data = await response.json()
+    return {
+      accessToken: data.access_token,
+      expiresAt: Date.now() + data.expires_in * 1000
+    }
   }
 
   /**
@@ -158,7 +246,7 @@ export class GeminiAPI {
     // Antigravity API 使用包装结构：顶层包含 model, userAgent, project, requestId
     // 实际的 Gemini 请求在 request 字段内
     return {
-      model: 'gemini-3-pro-image', // 内部模型名（不带 -preview）
+      model: 'gemini-3-pro-image', // API内部使用的模型名称(不是preview别名)
       userAgent: 'antigravity',
       project: projectId,
       requestId: this.generateRequestId(),
@@ -213,18 +301,43 @@ export class GeminiAPI {
     return history
       .map((message) => {
         const parts: RequestPart[] = []
+        let signatureIndex = 0 // 跟踪 thoughtSignature 的索引
+
         if (message.content) {
-          parts.push({ text: message.content })
+          const textPart: RequestPart = { text: message.content }
+          // 只有模型返回的消息才添加 thoughtSignature
+          // 用户消息不应该有 thoughtSignature
+          if (
+            message.role === 'model' &&
+            message.thoughtSignatures &&
+            message.thoughtSignatures[signatureIndex]
+          ) {
+            textPart.thoughtSignature = message.thoughtSignatures[signatureIndex]
+          }
+          parts.push(textPart)
+          signatureIndex++
         }
+
         if (message.images && message.images.length > 0) {
           for (const imageBase64 of message.images) {
             const { data, mimeType } = this.parseImageData(imageBase64)
-            parts.push({
+            const imagePart: RequestPart = {
               inlineData: {
                 data,
                 mimeType
               }
-            })
+            }
+            // 只有模型返回的消息才添加 thoughtSignature
+            // 用户消息不应该有 thoughtSignature
+            if (
+              message.role === 'model' &&
+              message.thoughtSignatures &&
+              message.thoughtSignatures[signatureIndex]
+            ) {
+              imagePart.thoughtSignature = message.thoughtSignatures[signatureIndex]
+            }
+            parts.push(imagePart)
+            signatureIndex++
           }
         }
         return { role: message.role, parts }
@@ -247,18 +360,16 @@ export class GeminiAPI {
     prompt: string,
     imageConfig: ImageConfig,
     referenceImages?: string[],
-    options?: { sessionId?: string; history?: ConversationMessage[] }
-  ): Promise<{ text?: string; images: string[] }> {
+    options?: { sessionId?: string; history?: ConversationMessage[]; signal?: AbortSignal }
+  ): Promise<{ text?: string; images: string[]; thoughtSignatures?: string[] }> {
+    // 自动检查并刷新 token（如果需要）
+    await this.ensureValidToken()
+
     if (!this.authConfig) {
       throw new Error('API 未初始化，请先设置 OAuth 认证')
     }
 
-    const requestBody = this.buildAntigravityRequest(
-      prompt,
-      imageConfig,
-      referenceImages,
-      options
-    )
+    const requestBody = this.buildAntigravityRequest(prompt, imageConfig, referenceImages, options)
 
     // 尝试多个 base URL
     let lastError: unknown = null
@@ -270,12 +381,14 @@ export class GeminiAPI {
             Authorization: `Bearer ${this.authConfig.accessToken}`,
             Accept: 'application/json'
           },
+          signal: options?.signal,
           timeout: 120000 // 2分钟超时
         })
 
         // 解析响应
         const data = response.data
         const images: string[] = []
+        const thoughtSignatures: string[] = []
         let text: string | undefined
 
         // 检查响应格式
@@ -284,6 +397,14 @@ export class GeminiAPI {
           const parts = responseData.candidates[0].content?.parts || []
 
           for (const part of parts) {
+            // 保存 thoughtSignature（如果存在）
+            if (part.thoughtSignature || part.thought_signature) {
+              thoughtSignatures.push(part.thoughtSignature || part.thought_signature)
+            } else {
+              // 即使没有 signature，也要占位以保持索引对应
+              thoughtSignatures.push('')
+            }
+
             if (part.text) {
               text = part.text
             } else if (part.inlineData || part.inline_data) {
@@ -294,7 +415,11 @@ export class GeminiAPI {
         }
 
         console.log(`使用 Antigravity API 成功: ${baseUrl}`)
-        return { text, images }
+        return {
+          text,
+          images,
+          thoughtSignatures: thoughtSignatures.length > 0 ? thoughtSignatures : undefined
+        }
       } catch (error: unknown) {
         const errorMessage = axios.isAxiosError(error) ? error.message : '未知错误'
         console.warn(`尝试 ${baseUrl} 失败:`, errorMessage)

@@ -21,6 +21,7 @@ export const useChatStore = defineStore('chat', () => {
   const currentPrompt = ref<string>('')
   const referenceImages = ref<string[]>([]) // 用于图生图的参考图片
   const isLoadingSessions = ref<boolean>(false)
+  const abortController = ref<AbortController | null>(null)
 
   // 方法
   const currentSession = computed(() =>
@@ -106,6 +107,7 @@ export const useChatStore = defineStore('chat', () => {
       role: message.role,
       content: message.content,
       images: message.images ? [...message.images] : undefined,
+      thoughtSignatures: message.thoughtSignatures ? [...message.thoughtSignatures] : undefined,
       timestamp: message.timestamp
     }
   }
@@ -152,7 +154,8 @@ export const useChatStore = defineStore('chat', () => {
         return {
           role: msg.role,
           content: msg.content,
-          images
+          images,
+          thoughtSignatures: msg.thoughtSignatures // 传递 thought signatures
         }
       })
     )
@@ -190,12 +193,17 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * 添加模型响应消息
    */
-  async function addModelMessage(content: string, images?: string[]): Promise<void> {
+  async function addModelMessage(
+    content: string,
+    images?: string[],
+    thoughtSignatures?: string[]
+  ): Promise<void> {
     const message: ChatMessage = {
       id: generateMessageId(),
       role: 'model',
       content,
       images: await persistImages(images, 'generated'),
+      thoughtSignatures, // 保存 thought signatures
       timestamp: Date.now()
     }
     if (message.images && message.images.length > 0) {
@@ -203,6 +211,17 @@ export const useChatStore = defineStore('chat', () => {
     }
     messages.value.push(message)
     await saveMessages()
+  }
+
+  /**
+   * 停止生成
+   */
+  async function stopGeneration(): Promise<void> {
+    if (abortController.value) {
+      abortController.value.abort()
+      abortController.value = null
+    }
+    isGenerating.value = false
   }
 
   /**
@@ -215,6 +234,12 @@ export const useChatStore = defineStore('chat', () => {
     if (!authStore.isAuthenticated) {
       throw new Error('请先进行认证')
     }
+
+    // Cancel previous request if any
+    if (abortController.value) {
+      abortController.value.abort()
+    }
+    abortController.value = new AbortController()
 
     isGenerating.value = true
     currentPrompt.value = prompt
@@ -237,14 +262,20 @@ export const useChatStore = defineStore('chat', () => {
         console.warn('构建历史消息失败，将使用当前提示词:', error)
       }
 
+      // 调用 API 生成图像
       const result = await geminiAPI.generateImage(prompt, imageConfig, refImages, {
         sessionId: currentSessionId.value || undefined,
-        history
+        history,
+        signal: abortController.value.signal
       })
 
       // 添加模型响应
-      await addModelMessage(result.text || '图像生成成功', result.images)
+      await addModelMessage(result.text || '图像生成成功', result.images, result.thoughtSignatures)
     } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'CanceledError') {
+        console.log('生成已取消')
+        return
+      }
       console.error('生成图像失败:', error)
       const errorMessage = error instanceof Error ? error.message : '未知错误'
       await addModelMessage(`生成失败: ${errorMessage}`)
@@ -252,6 +283,7 @@ export const useChatStore = defineStore('chat', () => {
     } finally {
       isGenerating.value = false
       currentPrompt.value = ''
+      abortController.value = null
     }
   }
 
@@ -372,7 +404,7 @@ export const useChatStore = defineStore('chat', () => {
    * 生成消息 ID
    */
   function generateMessageId(): string {
-    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    return `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
   }
 
   return {
@@ -404,6 +436,7 @@ export const useChatStore = defineStore('chat', () => {
     saveMessages,
     loadMessages,
     exportMessages,
-    importMessages
+    importMessages,
+    stopGeneration
   }
 })

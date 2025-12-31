@@ -102,7 +102,12 @@ export function getSettings(): AppSettings {
 
 export function updateSettings(partial: Partial<AppSettings>): AppSettings {
   const store = getSettingsStore()
-  store.set(partial)
+  // 逐个设置属性,避免类型错误
+  Object.entries(partial).forEach(([key, value]) => {
+    if (value !== undefined) {
+      store.set(key as keyof AppSettings, value)
+    }
+  })
   return getSettings()
 }
 
@@ -166,22 +171,51 @@ async function migrateStorage(oldPath: string, newPath: string): Promise<void> {
   const newDirs = getStoragePaths(newPath)
   await ensureStorageDirs(newPath)
 
-  await copyDirIfExists(oldDirs.chatsDir, newDirs.chatsDir)
-  await copyDirIfExists(oldDirs.imagesDir, newDirs.imagesDir)
-  await copyDirIfExists(oldDirs.authsDir, newDirs.authsDir)
+  // 移动(剪切)目录内容到新位置
+  await moveDirIfExists(oldDirs.chatsDir, newDirs.chatsDir)
+  await moveDirIfExists(oldDirs.imagesDir, newDirs.imagesDir)
+  await moveDirIfExists(oldDirs.authsDir, newDirs.authsDir)
+
+  // 清理旧的存储目录(如果为空)
+  await cleanupOldStorage(oldPath)
 }
 
-async function copyDirIfExists(source: string, target: string): Promise<void> {
+async function moveDirIfExists(source: string, target: string): Promise<void> {
   try {
     const stat = await fs.stat(source)
     if (!stat.isDirectory()) return
   } catch {
     return
   }
-  await fs.cp(source, target, { recursive: true, force: true })
+
+  try {
+    // 先复制到新位置
+    await fs.cp(source, target, { recursive: true, force: true })
+    // 复制成功后删除旧目录
+    await fs.rm(source, { recursive: true, force: true })
+  } catch (error) {
+    console.error(`移动目录失败 ${source} -> ${target}:`, error)
+    throw error
+  }
+}
+
+async function cleanupOldStorage(oldPath: string): Promise<void> {
+  try {
+    // 检查旧存储目录是否为空
+    const files = await fs.readdir(oldPath)
+    if (files.length === 0) {
+      // 如果为空,删除整个目录
+      await fs.rmdir(oldPath)
+      console.log(`已清理空的旧存储目录: ${oldPath}`)
+    }
+  } catch (error) {
+    // 忽略清理错误,不影响主流程
+    console.warn('清理旧存储目录时出错:', error)
+  }
 }
 
 function sanitizeFileName(name: string): string {
+  // eslint-disable-next-line no-control-regex
   return name.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '').trim()
 }
 
@@ -323,7 +357,8 @@ export async function writeChatSession(
 export async function createChatSession(name?: string): Promise<ChatSessionInfo> {
   const { chatsDir } = getStoragePaths()
   await ensureStorageDirs()
-  const baseName = sanitizeFileName(name || formatDefaultSessionName()) || formatDefaultSessionName()
+  const baseName =
+    sanitizeFileName(name || formatDefaultSessionName()) || formatDefaultSessionName()
   const fileName = await getUniqueFileName(chatsDir, baseName)
   const now = Date.now()
   const payload = {

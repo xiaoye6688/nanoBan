@@ -7,191 +7,87 @@
         </div>
       </template>
 
-      <!-- 分辨率选择 -->
-      <div class="config-section">
-        <div class="section-title">分辨率</div>
-        <el-radio-group v-model="configStore.imageSize" @change="configStore.saveConfig()">
-          <el-radio-button label="1K">1K</el-radio-button>
-          <el-radio-button label="2K">2K</el-radio-button>
-          <el-radio-button label="4K">4K</el-radio-button>
-        </el-radio-group>
-      </div>
+      <!-- 参数配置区域 -->
+      <div class="config-rows">
+        <!-- 分辨率 -->
+        <div class="config-item">
+          <span class="item-label">分辨率</span>
+          <div class="item-control">
+            <el-radio-group
+              v-model="configStore.imageSize"
+              size="small"
+              @change="configStore.saveConfig()"
+            >
+              <el-radio-button label="1K">1K</el-radio-button>
+              <el-radio-button label="2K">2K</el-radio-button>
+              <el-radio-button label="4K">4K</el-radio-button>
+            </el-radio-group>
+          </div>
+        </div>
 
-      <!-- 宽高比选择 -->
-      <div class="config-section">
-        <div class="section-title">宽高比</div>
-        <el-select
-          v-model="configStore.aspectRatio"
-          style="width: 100%"
-          @change="configStore.saveConfig()"
-        >
-          <el-option label="1:1 (正方形)" value="1:1" />
-          <el-option label="16:9 (横屏)" value="16:9" />
-          <el-option label="9:16 (竖屏)" value="9:16" />
-          <el-option label="4:3 (经典)" value="4:3" />
-          <el-option label="3:4 (经典竖屏)" value="3:4" />
-          <el-option label="21:9 (超宽)" value="21:9" />
-          <el-option label="2:3" value="2:3" />
-          <el-option label="3:2" value="3:2" />
-          <el-option label="4:5" value="4:5" />
-          <el-option label="5:4" value="5:4" />
-        </el-select>
+        <!-- 宽高比 -->
+        <div class="config-item">
+          <span class="item-label">宽高比</span>
+          <div class="item-control">
+            <el-select
+              v-model="configStore.aspectRatio"
+              size="small"
+              style="width: 100px"
+              @change="configStore.saveConfig()"
+            >
+              <el-option label="1:1" value="1:1" />
+              <el-option label="16:9" value="16:9" />
+              <el-option label="9:16" value="9:16" />
+              <el-option label="4:3" value="4:3" />
+              <el-option label="3:4" value="3:4" />
+              <el-option label="21:9" value="21:9" />
+            </el-select>
+          </div>
+        </div>
       </div>
 
       <!-- 预设配置 -->
       <div class="config-section">
-        <div class="section-title">预设配置</div>
-        <el-scrollbar max-height="300px">
-          <div class="presets-list">
-            <div
-              v-for="(preset, index) in configStore.presets"
-              :key="index"
-              class="preset-item"
-              @click="applyPreset(preset)"
-            >
-              <div class="preset-info">
-                <div class="preset-name">{{ preset.name }}</div>
-                <div class="preset-desc">{{ preset.description }}</div>
-              </div>
-              <el-icon class="preset-icon">
-                <ArrowRight />
-              </el-icon>
+        <div
+          class="section-title"
+          :class="{ 'is-active': isPresetsExpanded }"
+          @click="isPresetsExpanded = !isPresetsExpanded"
+        >
+          <el-icon><ArrowRight /></el-icon>
+          预设配置
+        </div>
+        <div v-show="isPresetsExpanded" class="presets-grid">
+          <div
+            v-for="(preset, index) in configStore.presets"
+            :key="index"
+            class="preset-card"
+            @click="applyPreset(preset)"
+          >
+            <div class="preset-info">
+              <div class="preset-name">{{ preset.name }}</div>
+              <div class="preset-desc">{{ preset.description }}</div>
             </div>
           </div>
-        </el-scrollbar>
-      </div>
-
-      <!-- 当前配置信息 -->
-      <div class="config-section">
-        <el-descriptions title="当前配置" :column="1" size="small" border>
-          <el-descriptions-item label="分辨率">
-            {{ configStore.imageSize }}
-          </el-descriptions-item>
-          <el-descriptions-item label="宽高比">
-            {{ configStore.aspectRatio }}
-          </el-descriptions-item>
-          <el-descriptions-item label="预估像素">
-            {{ estimatedPixels }}
-          </el-descriptions-item>
-        </el-descriptions>
-      </div>
-    </el-card>
-
-    <!-- 操作按钮 -->
-    <el-card shadow="never" style="margin-top: 16px">
-      <template #header>
-        <div class="card-header">
-          <span>对话管理</span>
         </div>
-      </template>
-
-      <el-space direction="vertical" style="width: 100%">
-        <el-button type="warning" style="width: 100%" @click="handleClearMessages">
-          <el-icon><Delete /></el-icon>
-          清空对话历史
-        </el-button>
-        <el-button type="info" style="width: 100%" @click="handleExportMessages">
-          <el-icon><Download /></el-icon>
-          导出对话
-        </el-button>
-      </el-space>
+      </div>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref } from 'vue'
 import { useConfigStore } from '../stores/config'
-import { useChatStore } from '../stores/chat'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowRight, Delete, Download } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import type { PresetConfig } from '../types/gemini'
+import { ArrowRight } from '@element-plus/icons-vue'
 
 const configStore = useConfigStore()
-const chatStore = useChatStore()
+const isPresetsExpanded = ref(false)
 
 // 应用预设配置
 const applyPreset = (preset: PresetConfig): void => {
   configStore.applyPreset(preset)
   ElMessage.success(`已应用预设: ${preset.name}`)
-}
-
-// 估算像素数
-const estimatedPixels = computed(() => {
-  const resolutionMap = {
-    '1K': {
-      '1:1': '1024x1024',
-      '16:9': '1376x768',
-      '9:16': '768x1376',
-      '4:3': '1200x896',
-      '3:4': '896x1200',
-      '21:9': '1584x672',
-      '2:3': '848x1264',
-      '3:2': '1264x848',
-      '4:5': '928x1152',
-      '5:4': '1152x928'
-    },
-    '2K': {
-      '1:1': '2048x2048',
-      '16:9': '2752x1536',
-      '9:16': '1536x2752',
-      '4:3': '2400x1792',
-      '3:4': '1792x2400',
-      '21:9': '3168x1344',
-      '2:3': '1696x2528',
-      '3:2': '2528x1696',
-      '4:5': '1856x2304',
-      '5:4': '2304x1856'
-    },
-    '4K': {
-      '1:1': '4096x4096',
-      '16:9': '5504x3072',
-      '9:16': '3072x5504',
-      '4:3': '4800x3584',
-      '3:4': '3584x4800',
-      '21:9': '6336x2688',
-      '2:3': '3392x5056',
-      '3:2': '5056x3392',
-      '4:5': '3712x4608',
-      '5:4': '4608x3712'
-    }
-  }
-
-  return resolutionMap[configStore.imageSize]?.[configStore.aspectRatio] || '未知'
-})
-
-// 清空对话历史
-const handleClearMessages = (): void => {
-  ElMessageBox.confirm('确定要清空所有对话历史吗？此操作不可恢复。', '警告', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning'
-  })
-    .then(() => {
-      chatStore.clearMessages()
-      ElMessage.success('对话历史已清空')
-    })
-    .catch(() => {
-      // 取消操作
-    })
-}
-
-// 导出对话
-const handleExportMessages = (): void => {
-  try {
-    const json = chatStore.exportMessages()
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `gemini-chat-${Date.now()}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    ElMessage.success('对话已导出')
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : '导出失败'
-    ElMessage.error(errorMessage)
-  }
 }
 </script>
 
@@ -203,71 +99,129 @@ const handleExportMessages = (): void => {
 .card-header {
   font-weight: 600;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.config-section {
+.config-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   margin-bottom: 24px;
 }
 
-.config-section:last-child {
-  margin-bottom: 0;
+.config-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.item-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.item-control {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  max-width: 60%;
+}
+
+/* Presets Grid */
+.config-section {
+  margin-top: 10px;
 }
 
 .section-title {
   font-size: 13px;
-  font-weight: 500;
-  color: #606266;
+  font-weight: 600;
+  color: #303133;
   margin-bottom: 12px;
-}
-
-.presets-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.preset-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
+  gap: 4px;
   cursor: pointer;
-  transition: all 0.2s;
+  user-select: none;
 }
 
-.preset-item:hover {
+.section-title:hover {
+  color: #409eff;
+}
+
+.section-title .el-icon {
+  margin-right: 4px;
+  transition: transform 0.3s;
+}
+
+.section-title.is-active .el-icon {
+  transform: rotate(90deg);
+}
+
+.presets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.preset-card {
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+.preset-card:hover {
+  border-color: #409eff;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.preset-card.active {
   border-color: #409eff;
   background: #ecf5ff;
 }
 
 .preset-info {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .preset-name {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   color: #303133;
-  margin-bottom: 4px;
+  line-height: 1.2;
 }
 
 .preset-desc {
-  font-size: 12px;
+  font-size: 11px;
   color: #909399;
-}
-
-.preset-icon {
-  color: #909399;
-  font-size: 16px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 :deep(.el-card__header) {
   padding: 12px 16px;
+  border-bottom: 1px solid #ebeef5;
 }
 
 :deep(.el-card__body) {
   padding: 16px;
+}
+
+:deep(.el-radio-button__inner) {
+  padding: 5px 12px;
+  font-size: 12px;
 }
 </style>

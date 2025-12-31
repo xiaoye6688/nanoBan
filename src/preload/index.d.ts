@@ -85,7 +85,9 @@ export interface CustomAPI {
   selectStoragePath: () => Promise<string | null>
   setStoragePath: (path: string, migrate?: boolean) => Promise<AppSettings>
   listChats: () => Promise<ChatSessionInfo[]>
-  readChat: (sessionId: string) => Promise<{ session: ChatSessionInfo; messages: StoredChatMessage[] }>
+  readChat: (
+    sessionId: string
+  ) => Promise<{ session: ChatSessionInfo; messages: StoredChatMessage[] }>
   writeChat: (sessionId: string, messages: StoredChatMessage[]) => Promise<ChatSessionInfo>
   createChat: (name?: string) => Promise<ChatSessionInfo>
   deleteChat: (sessionId: string) => Promise<{ success: boolean }>

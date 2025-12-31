@@ -85,10 +85,13 @@ export async function waitForOAuthToken(sessionId: string): Promise<OAuthToken> 
 
   const { tokenPromise, cleanup } = activeSession
   const timeoutPromise = new Promise<OAuthToken>((_, reject) => {
-    setTimeout(() => {
-      cleanup()
-      reject(new Error('授权超时（5分钟）'))
-    }, 5 * 60 * 1000)
+    setTimeout(
+      () => {
+        cleanup()
+        reject(new Error('授权超时（5分钟）'))
+      },
+      5 * 60 * 1000
+    )
   })
 
   try {

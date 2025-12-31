@@ -8,11 +8,23 @@
           :key="message.id"
           :class="['message-item', message.role]"
         >
+          <!-- 头像 -->
+          <div class="avatar">
+            <template v-if="message.role === 'model'">
+              <div class="avatar-ai">
+                <el-icon><Sugar /></el-icon>
+              </div>
+            </template>
+            <template v-else>
+              <div class="avatar-user">
+                <el-icon><User /></el-icon>
+              </div>
+            </template>
+          </div>
+
+          <!-- 消息内容 -->
           <div class="message-content">
-            <div class="message-header">
-              <span class="message-role">{{ message.role === 'user' ? '用户' : 'Gemini' }}</span>
-              <span class="message-time">{{ formatTime(message.timestamp) }}</span>
-            </div>
+            <div v-if="message.role === 'model'" class="sender-name">Gemini</div>
 
             <!-- 文本内容 -->
             <div v-if="message.content" class="message-text">
@@ -26,7 +38,8 @@
                   :src="img"
                   :preview-src-list="message.imageUrls"
                   :initial-index="idx"
-                  fit="cover"
+                  :preview-teleported="true"
+                  :hide-on-click-modal="true"
                   class="message-image"
                   lazy
                 />
@@ -42,61 +55,81 @@
                 </div>
               </div>
             </div>
+
+            <div v-if="false" class="message-time">{{ formatTime(message.timestamp) }}</div>
           </div>
         </div>
       </div>
 
       <!-- 空状态 -->
-      <el-empty v-else description="暂无对话记录" />
+      <el-empty v-else description="暂无对话记录" :image-size="120" />
     </el-scrollbar>
 
-    <!-- 输入区域 -->
-    <div class="input-area">
-      <!-- 参考图片预览 -->
-      <div v-if="chatStore.referenceImages.length > 0" class="reference-images">
-        <div class="reference-title">参考图片:</div>
-        <div class="reference-list">
-          <div
-            v-for="(img, index) in chatStore.referenceImages"
-            :key="index"
-            class="reference-item"
-          >
-            <el-image :src="img" fit="cover" class="reference-thumb" />
-            <el-icon class="remove-icon" @click="removeReferenceImage(index)">
-              <Close />
-            </el-icon>
+    <!-- 底部输入区域 -->
+    <div class="input-section">
+      <!-- 参考图片预览栏 -->
+      <div v-if="chatStore.referenceImages.length > 0" class="reference-bar">
+        <div v-for="(img, index) in chatStore.referenceImages" :key="index" class="reference-item">
+          <el-image :src="img" fit="cover" class="reference-thumb" />
+          <div class="remove-btn" @click="removeReferenceImage(index)">
+            <el-icon><Close /></el-icon>
           </div>
         </div>
       </div>
 
-      <!-- 输入框和按钮 -->
-      <div class="input-controls">
-        <el-upload
-          :auto-upload="false"
-          :show-file-list="false"
-          accept="image/*"
-          :on-change="handleImageUpload"
-          multiple
-        >
-          <el-button :icon="Picture" circle title="上传参考图片" />
-        </el-upload>
+      <!-- 输入工具栏 -->
+      <div class="input-toolbar">
+        <div class="toolbar-left">
+          <el-upload
+            :auto-upload="false"
+            :show-file-list="false"
+            accept="image/*"
+            :on-change="handleImageUpload"
+            multiple
+            :disabled="chatStore.isGenerating"
+          >
+            <el-button link class="tool-btn" :disabled="chatStore.isGenerating" title="上传参考图">
+              <el-icon :size="20"><Picture /></el-icon>
+            </el-button>
+          </el-upload>
+        </div>
 
-        <el-input
-          v-model="promptInput"
-          type="textarea"
-          :rows="3"
-          placeholder="输入图片描述..."
-          @keydown.ctrl.enter="handleGenerate"
-        />
+        <div class="input-wrapper">
+          <el-input
+            v-model="promptInput"
+            type="textarea"
+            class="chat-input"
+            :autosize="{ minRows: 1, maxRows: 5 }"
+            resize="none"
+            placeholder="输入画面描述..."
+            :disabled="chatStore.isGenerating"
+            @keydown.enter.prevent="handleEnterKey"
+          />
+        </div>
 
-        <el-button
-          type="primary"
-          :loading="chatStore.isGenerating"
-          :disabled="!canGenerate"
-          @click="handleGenerate"
-        >
-          {{ chatStore.isGenerating ? '生成中...' : '生成图片' }}
-        </el-button>
+        <div class="toolbar-right">
+          <el-button
+            v-if="chatStore.isGenerating"
+            type="danger"
+            circle
+            class="action-btn"
+            title="停止生成"
+            @click="handleStop"
+          >
+            <el-icon><VideoPause /></el-icon>
+          </el-button>
+          <el-button
+            v-else
+            type="primary"
+            circle
+            class="action-btn"
+            :disabled="!canGenerate"
+            title="发送"
+            @click="handleGenerate"
+          >
+            <el-icon><Position /></el-icon>
+          </el-button>
+        </div>
       </div>
     </div>
   </div>
@@ -107,7 +140,15 @@ import { ref, computed, nextTick, watch } from 'vue'
 import { useChatStore } from '../stores/chat'
 import { useAuthStore } from '../stores/auth'
 import { ElMessage } from 'element-plus'
-import { Picture, Close, Download } from '@element-plus/icons-vue'
+import {
+  Picture,
+  Close,
+  Download,
+  Sugar,
+  User,
+  Position,
+  VideoPause
+} from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
 
 const chatStore = useChatStore()
@@ -138,6 +179,12 @@ const removeReferenceImage = (index: number): void => {
   chatStore.removeReferenceImage(index)
 }
 
+const handleEnterKey = (e: KeyboardEvent): void => {
+  if (!e.shiftKey) {
+    handleGenerate()
+  }
+}
+
 // 生成图片
 const handleGenerate = async (): Promise<void> => {
   if (!canGenerate.value) {
@@ -149,25 +196,30 @@ const handleGenerate = async (): Promise<void> => {
     return
   }
 
+  const prompt = promptInput.value.trim()
+  promptInput.value = ''
+
+  nextTick(() => {
+    scrollToBottom()
+  })
+
   try {
-    const prompt = promptInput.value.trim()
     const refImages =
       chatStore.referenceImages.length > 0 ? [...chatStore.referenceImages] : undefined
 
-    await chatStore.generateImage(prompt, refImages)
-
-    // 清空输入
-    promptInput.value = ''
     chatStore.clearReferenceImages()
 
-    // 滚动到底部
-    nextTick(() => {
-      scrollToBottom()
-    })
+    await chatStore.generateImage(prompt, refImages)
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : '生成失败'
-    ElMessage.error(errorMessage)
+    if (error instanceof Error && error.name === 'CanceledError') {
+      return
+    }
   }
+}
+
+// 停止生成
+const handleStop = async (): Promise<void> => {
+  await chatStore.stopGeneration()
 }
 
 // 滚动到底部
@@ -203,12 +255,9 @@ const handleSaveImage = async (
 
     if (result.success) {
       ElMessage.success('图片保存成功')
-    } else if (result.canceled) {
-      // 用户取消了保存
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '未知错误'
-    console.error('保存图片失败:', error)
     ElMessage.error(`保存失败: ${errorMessage}`)
   }
 }
@@ -229,209 +278,239 @@ watch(
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #fff;
-  min-height: 0;
+  background: #f5f5f5;
 }
 
 .messages-container {
   flex: 1;
   padding: 20px;
-  min-height: 0;
-}
-
-.messages-container :deep(.el-scrollbar__wrap) {
-  min-height: 0;
-}
-
-.messages-container :deep(.el-scrollbar__view) {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
 }
 
 .messages-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  max-width: 900px;
+  margin: 0 auto;
 }
 
 .message-item {
   display: flex;
+  gap: 12px;
+  align-items: flex-start;
 }
 
 .message-item.user {
-  justify-content: flex-end;
+  flex-direction: row-reverse;
 }
 
-.message-item.model {
-  justify-content: flex-start;
+.avatar {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.avatar-ai {
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #409eff;
+  font-size: 20px;
+  border: 1px solid #e4e7ed;
+}
+
+.avatar-user {
+  width: 100%;
+  height: 100%;
+  background: #95d475;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
 }
 
 .message-content {
-  max-width: 70%;
-  padding: 12px 16px;
-  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+  align-items: flex-start;
 }
 
 .message-item.user .message-content {
-  background: #409eff;
-  color: #fff;
+  align-items: flex-end;
 }
 
-.message-item.model .message-content {
-  background: #f4f4f5;
-  color: #303133;
-}
-
-.message-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
+.sender-name {
   font-size: 12px;
-}
-
-.message-item.user .message-header {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.message-item.model .message-header {
   color: #909399;
-}
-
-.message-role {
-  font-weight: 600;
-}
-
-.message-time {
-  opacity: 0.8;
+  margin-bottom: 4px;
 }
 
 .message-text {
+  padding: 10px 14px;
+  border-radius: 4px;
   line-height: 1.6;
+  font-size: 14px;
+  word-break: break-all;
   white-space: pre-wrap;
-  word-break: break-word;
+  width: fit-content;
+  position: relative;
+}
+
+.message-item.model .message-text {
+  background: #fff;
+  color: #303133;
+  border: 1px solid #e4e7ed;
+}
+
+.message-item.user .message-text {
+  background: #95d475;
+  color: #303133;
+  border: 1px solid #8bc96d;
 }
 
 .message-images {
+  margin-top: 12px;
+  background: transparent;
+  width: 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px;
-  margin-top: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
 }
 
 .message-image-wrapper {
   position: relative;
   width: 100%;
-  height: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s;
+  border: 1px solid #ebeef5;
+}
+
+.message-image-wrapper:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+.message-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.image-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+  padding: 4px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
 }
 
 .message-image-wrapper:hover .image-actions {
   opacity: 1;
 }
 
-.message-image {
-  width: 100%;
-  height: 200px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.image-actions {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.image-actions .el-button {
-  background: rgba(0, 0, 0, 0.6);
-  border-color: transparent;
-}
-
-.image-actions .el-button:hover {
-  background: rgba(0, 0, 0, 0.8);
-}
-
-.input-area {
+.input-section {
+  background: #f5f5f5;
   border-top: 1px solid #e4e7ed;
-  padding: 16px 20px;
-  background: #fff;
+  padding: 10px 20px 20px;
 }
 
-.reference-images {
-  margin-bottom: 12px;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 4px;
-}
-
-.reference-title {
-  font-size: 13px;
-  color: #606266;
-  margin-bottom: 8px;
-}
-
-.reference-list {
+.reference-bar {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 0 10px;
+  overflow-x: auto;
 }
 
 .reference-item {
   position: relative;
-  width: 80px;
-  height: 80px;
+  width: 60px;
+  height: 60px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #e4e7ed;
 }
 
 .reference-thumb {
   width: 100%;
   height: 100%;
-  border-radius: 4px;
 }
 
-.remove-icon {
+.remove-btn {
   position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 20px;
-  height: 20px;
-  background: #f56c6c;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  background: rgba(0, 0, 0, 0.5);
   color: #fff;
   border-radius: 50%;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 10px;
+  cursor: pointer;
 }
 
-.input-controls {
+.input-toolbar {
   display: flex;
-  gap: 12px;
   align-items: flex-end;
-  width: 100%;
+  gap: 10px;
+  background: #fff;
+  border-radius: 4px; /* Slightly rounded */
+  padding: 8px;
+  max-width: 900px;
+  margin: 0 auto;
 }
 
-.input-controls :deep(.el-input) {
+.tool-btn {
+  color: #606266;
+  padding: 4px;
+}
+
+.tool-btn:hover {
+  color: #303133;
+}
+
+.input-wrapper {
   flex: 1;
-  min-width: 0;
 }
 
-.input-controls :deep(.el-upload),
-.input-controls :deep(.el-button) {
-  flex-shrink: 0;
+.chat-input :deep(.el-textarea__inner) {
+  box-shadow: none;
+  border: none;
+  background: transparent;
+  padding: 4px 0;
+  min-height: 40px !important;
 }
 
-:deep(.el-textarea__inner) {
-  resize: none;
+.chat-input :deep(.el-textarea__inner:focus) {
+  box-shadow: none;
+}
+
+.action-btn {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
 }
 
 .messages-container :deep(.el-empty) {
-  padding: 0;
+  padding: 40px 0;
   margin: auto;
 }
 </style>

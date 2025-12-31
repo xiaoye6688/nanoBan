@@ -51,7 +51,39 @@ export const useAuthStore = defineStore('auth', () => {
 
     // 使用 Antigravity OAuth 认证初始化 API
     if (token.accessToken && Date.now() < token.expiresAt) {
-      geminiAPI.setAntigravityAuth(token.accessToken, token.projectId)
+      geminiAPI.setAntigravityAuth(
+        token.accessToken,
+        token.refreshToken,
+        token.expiresAt,
+        token.projectId,
+        // Token 刷新回调：更新存储中的 token
+        async (newToken) => {
+          if (!oauthToken.value) return
+
+          // 更新内存中的 token
+          oauthToken.value = {
+            ...oauthToken.value,
+            accessToken: newToken.accessToken,
+            expiresAt: newToken.expiresAt
+          }
+
+          // 更新数据库中的 token
+          if (activeAuthId.value) {
+            await window.api.saveAuth({
+              id: activeAuthId.value,
+              type: 'antigravity',
+              label: oauthToken.value.email || oauthToken.value.projectId || 'Antigravity OAuth',
+              email: oauthToken.value.email,
+              projectId: oauthToken.value.projectId,
+              accessToken: newToken.accessToken,
+              refreshToken: oauthToken.value.refreshToken,
+              expiresAt: newToken.expiresAt,
+              tokenType: oauthToken.value.tokenType
+            })
+            console.log('Token 已自动更新到存储')
+          }
+        }
+      )
     }
   }
 

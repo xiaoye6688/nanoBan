@@ -39,6 +39,7 @@ export interface ChatMessage {
   content: string
   images?: string[] // 存储相对路径的图片文件
   imageUrls?: string[] // 仅用于渲染的本地文件 URL
+  thoughtSignatures?: string[] // 用于存储模型返回的 thought signatures（Gemini 3 多轮对话需要）
   timestamp: number
 }
 

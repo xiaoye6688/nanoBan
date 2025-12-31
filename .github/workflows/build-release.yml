@@ -7,6 +7,12 @@ on:
       - 'v*' # 例如 v1.0.0
   # 也可以手动触发
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: '是否创建 GitHub Release（需要先推送标签）'
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   # Windows构建任务
@@ -109,6 +115,8 @@ jobs:
   release:
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
+    # 只在推送标签或手动触发且勾选创建 Release 时运行
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
     permissions:
       contents: write
 

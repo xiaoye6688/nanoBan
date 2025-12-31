@@ -27,7 +27,20 @@ git push origin v1.0.0
 1. 进入你的 GitHub 仓库
 2. 点击 `Actions` 标签
 3. 选择 `Build and Release` 工作流
-4. 点击 `Run workflow` 按钮手动触发
+4. 点击 `Run workflow` 按钮
+
+**注意**：
+- **仅构建测试**：不勾选 "是否创建 GitHub Release"，只会构建应用并上传 Artifacts
+- **构建并发布**：勾选 "是否创建 GitHub Release"，需要先推送标签（如 `v1.0.0`）
+
+手动触发的典型使用场景：
+```bash
+# 1. 先推送标签
+git tag v1.0.0
+git push origin v1.0.0
+
+# 2. 然后在 GitHub Actions 页面手动触发工作流并勾选"创建 Release"
+```
 
 ## 📋 工作流程
 

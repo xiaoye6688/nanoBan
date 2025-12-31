@@ -50,7 +50,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     // 使用 Antigravity OAuth 认证初始化 API
-    if (token.accessToken && Date.now() < token.expiresAt) {
+    if (token.accessToken && Date.now() < token.expiresAt && token.refreshToken) {
       geminiAPI.setAntigravityAuth(
         token.accessToken,
         token.refreshToken,

@@ -30,10 +30,12 @@ git push origin v1.0.0
 4. 点击 `Run workflow` 按钮
 
 **注意**：
+
 - **仅构建测试**：不勾选 "是否创建 GitHub Release"，只会构建应用并上传 Artifacts
 - **构建并发布**：勾选 "是否创建 GitHub Release"，需要先推送标签（如 `v1.0.0`）
 
 手动触发的典型使用场景：
+
 ```bash
 # 1. 先推送标签
 git tag v1.0.0
@@ -81,12 +83,14 @@ git push origin v1.0.0
 ### 需要的权限
 
 工作流需要以下权限：
+
 - `contents: write` - 用于创建 Release 和上传文件
 - `GITHUB_TOKEN` - GitHub 自动提供，无需手动配置
 
 ### 自定义配置
 
 如果需要修改构建行为，可以编辑以下文件：
+
 - `.github/workflows/build-release.yml` - 工作流配置
 - `electron-builder.yml` - Electron Builder 配置
 - `package.json` - 构建脚本和依赖

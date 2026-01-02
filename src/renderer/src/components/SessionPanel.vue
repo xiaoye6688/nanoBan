@@ -38,12 +38,10 @@
               </template>
             </el-popconfirm>
           </div>
-          
+
           <!-- 查看更多按钮 -->
           <div v-if="chatStore.sessions.length > 4" class="see-more-btn">
-            <el-button link type="info" @click="showHistoryDialog = true">
-              看看更多
-            </el-button>
+            <el-button link type="info" @click="showHistoryDialog = true"> 看看更多 </el-button>
           </div>
         </div>
       </el-scrollbar>

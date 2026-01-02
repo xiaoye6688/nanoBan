@@ -148,7 +148,6 @@ body {
 }
 
 @media (max-width: 350px) {
-
   .tip,
   .actions {
     display: none;

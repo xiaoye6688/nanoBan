@@ -1,12 +1,8 @@
 import axios from 'axios'
 import type { ImageConfig } from '../types/gemini'
 
-// Antigravity API 配置
-const ANTIGRAVITY_BASE_URLS = [
-  'https://daily-cloudcode-pa.googleapis.com',
-  'https://daily-cloudcode-pa.sandbox.googleapis.com',
-  'https://cloudcode-pa.googleapis.com'
-]
+// Antigravity API 配置（与 CLIProxyAPI 保持一致）
+const ANTIGRAVITY_BASE_URL = 'https://cloudcode-pa.googleapis.com'
 
 interface AntigravityAuthConfig {
   accessToken: string
@@ -201,31 +197,6 @@ export class GeminiAPI {
   }
 
   /**
-   * Decide whether to try another endpoint after a failure.
-   */
-  private shouldTryNextEndpoint(error: unknown): boolean {
-    if (!axios.isAxiosError(error)) {
-      return true
-    }
-
-    const status = error.response?.status
-
-    if (status === 400 || status === 401 || status === 403) {
-      return false
-    }
-
-    if (status === undefined) {
-      return true
-    }
-
-    if (status === 404 || status === 429) {
-      return true
-    }
-
-    return status >= 500 && status <= 599
-  }
-
-  /**
    * 构建 Antigravity API 请求体
    * 注意：Antigravity API 使用特殊的包装结构，与标准 Gemini API 不同
    */
@@ -371,145 +342,55 @@ export class GeminiAPI {
 
     const requestBody = this.buildAntigravityRequest(prompt, imageConfig, referenceImages, options)
 
-    // 尝试多个 base URL
-    let lastError: unknown = null
-    for (const baseUrl of ANTIGRAVITY_BASE_URLS) {
-      try {
-        const response = await axios.post(`${baseUrl}/v1internal:generateContent`, requestBody, {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.authConfig.accessToken}`,
-            Accept: 'application/json'
-          },
-          signal: options?.signal,
-          timeout: 120000 // 2分钟超时
-        })
+    const response = await axios.post(
+      `${ANTIGRAVITY_BASE_URL}/v1internal:generateContent`,
+      requestBody,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.authConfig.accessToken}`,
+          Accept: 'application/json'
+        },
+        signal: options?.signal,
+        timeout: 120000 // 2分钟超时
+      }
+    )
 
-        // 解析响应
-        const data = response.data
-        const images: string[] = []
-        const thoughtSignatures: string[] = []
-        let text: string | undefined
+    // 解析响应
+    const data = response.data
+    const images: string[] = []
+    const thoughtSignatures: string[] = []
+    let text: string | undefined
 
-        // 检查响应格式
-        const responseData = data.response || data
-        if (responseData.candidates && responseData.candidates.length > 0) {
-          const parts = responseData.candidates[0].content?.parts || []
+    // 检查响应格式
+    const responseData = data.response || data
+    if (responseData.candidates && responseData.candidates.length > 0) {
+      const parts = responseData.candidates[0].content?.parts || []
 
-          for (const part of parts) {
-            // 保存 thoughtSignature（如果存在）
-            if (part.thoughtSignature || part.thought_signature) {
-              thoughtSignatures.push(part.thoughtSignature || part.thought_signature)
-            } else {
-              // 即使没有 signature，也要占位以保持索引对应
-              thoughtSignatures.push('')
-            }
-
-            if (part.text) {
-              text = part.text
-            } else if (part.inlineData || part.inline_data) {
-              const inlineData = part.inlineData || part.inline_data
-              images.push(`data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`)
-            }
-          }
+      for (const part of parts) {
+        // 保存 thoughtSignature（如果存在）
+        if (part.thoughtSignature || part.thought_signature) {
+          thoughtSignatures.push(part.thoughtSignature || part.thought_signature)
+        } else {
+          // 即使没有 signature，也要占位以保持索引对应
+          thoughtSignatures.push('')
         }
 
-        console.log(`使用 Antigravity API 成功: ${baseUrl}`)
-        return {
-          text,
-          images,
-          thoughtSignatures: thoughtSignatures.length > 0 ? thoughtSignatures : undefined
-        }
-      } catch (error: unknown) {
-        const errorMessage = axios.isAxiosError(error) ? error.message : '未知错误'
-        console.warn(`尝试 ${baseUrl} 失败:`, errorMessage)
-        lastError = error
-
-        if (!this.shouldTryNextEndpoint(error)) {
-          throw error
+        if (part.text) {
+          text = part.text
+        } else if (part.inlineData || part.inline_data) {
+          const inlineData = part.inlineData || part.inline_data
+          images.push(`data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`)
         }
       }
     }
 
-    // 所有 URL 都失败了
-    throw lastError || new Error('所有 Antigravity API 端点都失败了')
-  }
-
-  /**
-   * 流式生成（Antigravity 流式 API）
-   */
-  async generateImageStream(
-    prompt: string,
-    imageConfig: ImageConfig,
-    onChunk: (chunk: { text?: string; image?: string }) => void
-  ): Promise<void> {
-    if (!this.authConfig) {
-      throw new Error('API 未初始化，请先设置 OAuth 认证')
+    console.log('使用 Antigravity API 成功')
+    return {
+      text,
+      images,
+      thoughtSignatures: thoughtSignatures.length > 0 ? thoughtSignatures : undefined
     }
-
-    const requestBody = this.buildAntigravityRequest(prompt, imageConfig)
-
-    // 尝试多个 base URL
-    let lastError: unknown = null
-    for (const baseUrl of ANTIGRAVITY_BASE_URLS) {
-      try {
-        const response = await axios.post(
-          `${baseUrl}/v1internal:streamGenerateContent?alt=sse`,
-          requestBody,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${this.authConfig.accessToken}`,
-              Accept: 'text/event-stream'
-            },
-            responseType: 'stream',
-            timeout: 120000
-          }
-        )
-
-        // 处理 SSE 流
-        const stream = response.data
-        stream.on('data', (chunk: Buffer) => {
-          const lines = chunk.toString().split('\n')
-          for (const line of lines) {
-            if (line.trim() && line.startsWith('data: ')) {
-              try {
-                const jsonData = JSON.parse(line.substring(6))
-                const responseData = jsonData.response || jsonData
-
-                if (responseData.candidates && responseData.candidates.length > 0) {
-                  const parts = responseData.candidates[0].content?.parts || []
-                  for (const part of parts) {
-                    if (part.text) {
-                      onChunk({ text: part.text })
-                    } else if (part.inlineData || part.inline_data) {
-                      const inlineData = part.inlineData || part.inline_data
-                      onChunk({
-                        image: `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`
-                      })
-                    }
-                  }
-                }
-              } catch (e) {
-                console.error('解析 SSE 数据失败:', e)
-              }
-            }
-          }
-        })
-
-        return
-      } catch (error: unknown) {
-        const errorMessage = axios.isAxiosError(error) ? error.message : '未知错误'
-        console.warn(`流式请求失败 ${baseUrl}:`, errorMessage)
-        lastError = error
-
-        if (!this.shouldTryNextEndpoint(error)) {
-          throw error
-        }
-      }
-    }
-
-    throw lastError || new Error('所有 Antigravity API 端点都失败了')
   }
 }
 

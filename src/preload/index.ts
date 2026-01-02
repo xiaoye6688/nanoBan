@@ -1,7 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-// Custom APIs for renderer
+/**
+ * 自定义 API，暴露给渲染进程
+ */
 const api = {
   startOAuth: () => ipcRenderer.invoke('start-oauth'),
   createOAuthSession: () => ipcRenderer.invoke('create-oauth-session'),
@@ -37,9 +39,10 @@ const api = {
     ipcRenderer.invoke('export-image', relativePath, defaultFileName)
 }
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+/**
+ * 使用 contextBridge API 暴露 Electron API 给渲染进程
+ * 仅在启用上下文隔离时使用，否则直接添加到 DOM 全局对象
+ */
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)

@@ -41,6 +41,7 @@ interface OAuthSession {
   cleanup: () => void
 }
 
+// 当前活动的 OAuth 会话
 let activeSession: OAuthSession | null = null
 
 /**
@@ -104,8 +105,9 @@ export async function waitForOAuthToken(sessionId: string): Promise<OAuthToken> 
 
 /**
  * 启动 Antigravity OAuth 2.0 授权流程
+ * @param _openBrowser - 保留参数以保持向后兼容（当前未使用）
  */
-export async function startOAuthFlow(openBrowser = true): Promise<OAuthToken> {
+export async function startOAuthFlow(_openBrowser = true): Promise<OAuthToken> {
   const { sessionId, authUrl } = createOAuthSession()
 
   // 打印授权 URL
@@ -116,10 +118,6 @@ export async function startOAuthFlow(openBrowser = true): Promise<OAuthToken> {
   console.log(
     `等待授权回调到 http://localhost:${ANTIGRAVITY_OAUTH_CONFIG.callbackPort}/oauth-callback ...`
   )
-
-  if (openBrowser) {
-    console.log('已生成授权链接，可由调用方自行打开浏览器')
-  }
 
   return waitForOAuthToken(sessionId)
 }
@@ -149,7 +147,6 @@ function startCallbackServer(expectedState: string): {
           const state = url.searchParams.get('state')
           const error = url.searchParams.get('error')
 
-          // 返回响应给浏览器
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
 
           if (error) {
@@ -195,7 +192,6 @@ function startCallbackServer(expectedState: string): {
             return
           }
 
-          // 成功响应
           res.end(`
           <html>
             <head><title>授权成功</title></head>
@@ -208,7 +204,6 @@ function startCallbackServer(expectedState: string): {
           </html>
         `)
 
-          // 交换令牌
           console.log('收到授权码，正在交换访问令牌...')
           const token = await exchangeCodeForToken(code)
           console.log('授权成功！')
@@ -290,7 +285,6 @@ async function exchangeCodeForToken(code: string): Promise<OAuthToken> {
     const data = response.data
     const expiresAt = Date.now() + data.expires_in * 1000
 
-    // 获取用户信息
     let email: string | undefined
     let projectId: string | undefined
 

@@ -2,8 +2,9 @@ import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { ensureStorageDirs } from './storage'
 import { setupIpc } from './ipc'
-import { createWindow } from './windows/main'
+import { createWindow, getMainWindow } from './windows/main'
 import { setupNetworkHeaders } from './network'
+import { tokenManager } from './tokenManager'
 
 // 当 Electron 完成初始化并准备创建浏览器窗口时调用
 app.whenReady().then(() => {
@@ -29,6 +30,13 @@ app.whenReady().then(() => {
   // 创建主窗口
   createWindow()
 
+  // 设置 TokenManager 的主窗口引用并启动定期检查
+  const mainWindow = getMainWindow()
+  if (mainWindow) {
+    tokenManager.setMainWindow(mainWindow)
+  }
+  tokenManager.startPeriodicCheck()
+
   // macOS 下点击 dock 图标时重新创建窗口
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -38,6 +46,7 @@ app.whenReady().then(() => {
 // 所有窗口关闭时退出应用（macOS 除外）
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    tokenManager.stopPeriodicCheck()
     app.quit()
   }
 })

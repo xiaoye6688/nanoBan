@@ -3,11 +3,21 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 
+// 保存主窗口引用
+let mainWindow: BrowserWindow | null = null
+
+/**
+ * 获取主窗口实例
+ */
+export function getMainWindow(): BrowserWindow | null {
+  return mainWindow
+}
+
 /**
  * 创建主窗口
  */
 export function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
@@ -21,7 +31,12 @@ export function createWindow(): void {
 
   // 窗口准备好后显示
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    mainWindow?.show()
+  })
+
+  // 窗口关闭时清除引用
+  mainWindow.on('closed', () => {
+    mainWindow = null
   })
 
   // 拦截新窗口打开，使用系统默认浏览器打开外部链接

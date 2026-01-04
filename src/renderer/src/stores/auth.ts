@@ -23,6 +23,9 @@ export const useAuthStore = defineStore('auth', () => {
   const pendingSessionId = ref<string | null>(null)
   const isAuthorizing = ref<boolean>(false)
 
+  // Token 刷新事件监听器清理函数
+  let tokenRefreshCleanup: (() => void) | null = null
+
   // 计算属性
   const hasValidToken = computed(() => {
     if (!oauthToken.value) return false
@@ -30,6 +33,85 @@ export const useAuthStore = defineStore('auth', () => {
   })
   const isAuthenticated = computed(() => hasValidToken.value)
   const activeAuth = computed(() => auths.value.find((auth) => auth.id === activeAuthId.value))
+
+  /**
+   * 初始化 token 刷新事件监听
+   */
+  function setupTokenRefreshListener(): void {
+    if (tokenRefreshCleanup) {
+      tokenRefreshCleanup()
+    }
+
+    tokenRefreshCleanup = window.api.onTokenRefreshed((data) => {
+      console.log('[AuthStore] 收到主进程 token 刷新事件:', data.authId)
+
+      // 如果刷新的是当前激活的 auth，更新内存中的 token
+      if (data.authId === activeAuthId.value && oauthToken.value) {
+        oauthToken.value = {
+          ...oauthToken.value,
+          accessToken: data.accessToken,
+          expiresAt: data.expiresAt
+        }
+
+        // 同步更新 geminiAPI 的 token
+        geminiAPI.setAntigravityAuth(
+          data.accessToken,
+          oauthToken.value.refreshToken || '',
+          data.expiresAt,
+          oauthToken.value.projectId,
+          handleTokenRefresh
+        )
+
+        console.log('[AuthStore] 内存中的 token 已更新')
+      }
+
+      // 刷新授权列表以获取最新的过期时间
+      void loadAuths()
+    })
+  }
+
+  /**
+   * 清理 token 刷新事件监听
+   */
+  function cleanupTokenRefreshListener(): void {
+    if (tokenRefreshCleanup) {
+      tokenRefreshCleanup()
+      tokenRefreshCleanup = null
+    }
+  }
+
+  /**
+   * Token 刷新回调（用于 geminiAPI）
+   */
+  async function handleTokenRefresh(newToken: {
+    accessToken: string
+    expiresAt: number
+  }): Promise<void> {
+    if (!oauthToken.value) return
+
+    // 更新内存中的 token
+    oauthToken.value = {
+      ...oauthToken.value,
+      accessToken: newToken.accessToken,
+      expiresAt: newToken.expiresAt
+    }
+
+    // 更新数据库中的 token
+    if (activeAuthId.value) {
+      await window.api.saveAuth({
+        id: activeAuthId.value,
+        type: 'antigravity',
+        label: oauthToken.value.email || oauthToken.value.projectId || 'Antigravity OAuth',
+        email: oauthToken.value.email,
+        projectId: oauthToken.value.projectId,
+        accessToken: newToken.accessToken,
+        refreshToken: oauthToken.value.refreshToken,
+        expiresAt: newToken.expiresAt,
+        tokenType: oauthToken.value.tokenType
+      })
+      console.log('[AuthStore] Token 已自动更新到存储')
+    }
+  }
 
   // 方法
 
@@ -56,33 +138,7 @@ export const useAuthStore = defineStore('auth', () => {
         token.refreshToken,
         token.expiresAt,
         token.projectId,
-        // Token 刷新回调：更新存储中的 token
-        async (newToken) => {
-          if (!oauthToken.value) return
-
-          // 更新内存中的 token
-          oauthToken.value = {
-            ...oauthToken.value,
-            accessToken: newToken.accessToken,
-            expiresAt: newToken.expiresAt
-          }
-
-          // 更新数据库中的 token
-          if (activeAuthId.value) {
-            await window.api.saveAuth({
-              id: activeAuthId.value,
-              type: 'antigravity',
-              label: oauthToken.value.email || oauthToken.value.projectId || 'Antigravity OAuth',
-              email: oauthToken.value.email,
-              projectId: oauthToken.value.projectId,
-              accessToken: newToken.accessToken,
-              refreshToken: oauthToken.value.refreshToken,
-              expiresAt: newToken.expiresAt,
-              tokenType: oauthToken.value.tokenType
-            })
-            console.log('Token 已自动更新到存储')
-          }
-        }
+        handleTokenRefresh
       )
     }
   }
@@ -241,6 +297,9 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     saveOAuthToken,
     selectAuth,
-    removeAuth
+    removeAuth,
+    // Token 刷新事件监听
+    setupTokenRefreshListener,
+    cleanupTokenRefreshListener
   }
 })

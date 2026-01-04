@@ -72,6 +72,28 @@ export interface AuthRecord {
   updatedAt: number
 }
 
+// Token 刷新结果接口
+export interface RefreshedToken {
+  accessToken: string
+  expiresAt: number
+  refreshToken?: string
+}
+
+// Token 状态检查结果接口
+export interface TokenStatus {
+  id: string
+  label: string
+  status: 'valid' | 'expiring' | 'expired' | 'no-refresh-token'
+  expiresAt: number
+}
+
+// Token 刷新事件数据接口
+export interface TokenRefreshedData {
+  authId: string
+  accessToken: string
+  expiresAt: number
+}
+
 // 自定义 API 接口
 export interface CustomAPI {
   startOAuth: () => Promise<OAuthToken>
@@ -103,6 +125,14 @@ export interface CustomAPI {
   deleteAuth: (authId: string) => Promise<{ success: boolean }>
   saveImage: (base64Data: string, defaultFileName?: string) => Promise<SaveImageResult>
   exportImage: (relativePath: string, defaultFileName?: string) => Promise<SaveImageResult>
+
+  // Token Manager API
+  getValidToken: (authId: string) => Promise<RefreshedToken | null>
+  refreshToken: (authId: string, refreshToken?: string) => Promise<RefreshedToken>
+  checkAllTokens: () => Promise<TokenStatus[]>
+  startTokenCheck: () => Promise<{ success: boolean }>
+  stopTokenCheck: () => Promise<{ success: boolean }>
+  onTokenRefreshed: (callback: (data: TokenRefreshedData) => void) => () => void
 }
 
 declare global {

@@ -2,7 +2,7 @@ import axios from 'axios'
 import * as http from 'node:http'
 
 // Antigravity OAuth 2.0 配置（来自 CLIProxyAPI）
-const ANTIGRAVITY_OAUTH_CONFIG = {
+export const ANTIGRAVITY_OAUTH_CONFIG = {
   clientId: '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com',
   clientSecret: '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',
   callbackPort: 51121,
@@ -105,9 +105,8 @@ export async function waitForOAuthToken(sessionId: string): Promise<OAuthToken> 
 
 /**
  * 启动 Antigravity OAuth 2.0 授权流程
- * @param _openBrowser - 保留参数以保持向后兼容（当前未使用）
  */
-export async function startOAuthFlow(_openBrowser = true): Promise<OAuthToken> {
+export async function startOAuthFlow(): Promise<OAuthToken> {
   const { sessionId, authUrl } = createOAuthSession()
 
   // 打印授权 URL

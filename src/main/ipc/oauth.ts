@@ -14,7 +14,7 @@ export function setupOAuthIPC(): void {
   // 启动 OAuth 授权流程
   ipcMain.handle('start-oauth', async () => {
     try {
-      const token = await startOAuthFlow(false)
+      const token = await startOAuthFlow()
       return token
     } catch (error: unknown) {
       console.error('OAuth 授权失败:', error)

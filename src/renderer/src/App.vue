@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from './stores/auth'
 import { useConfigStore } from './stores/config'
@@ -76,6 +76,14 @@ onMounted(async () => {
   await authStore.loadFromStorage()
   await configStore.loadConfig()
   await chatStore.initialize()
+
+  // 初始化 token 刷新事件监听（接收主进程的自动刷新通知）
+  authStore.setupTokenRefreshListener()
+})
+
+// 清理事件监听
+onUnmounted(() => {
+  authStore.cleanupTokenRefreshListener()
 })
 
 // 处理登出

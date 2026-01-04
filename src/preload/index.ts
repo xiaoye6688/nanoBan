@@ -36,7 +36,29 @@ const api = {
   saveImage: (base64Data: string, defaultFileName?: string) =>
     ipcRenderer.invoke('save-image', base64Data, defaultFileName),
   exportImage: (relativePath: string, defaultFileName?: string) =>
-    ipcRenderer.invoke('export-image', relativePath, defaultFileName)
+    ipcRenderer.invoke('export-image', relativePath, defaultFileName),
+
+  // Token Manager API
+  getValidToken: (authId: string) => ipcRenderer.invoke('get-valid-token', authId),
+  refreshToken: (authId: string, refreshToken?: string) =>
+    ipcRenderer.invoke('refresh-token', authId, refreshToken),
+  checkAllTokens: () => ipcRenderer.invoke('check-all-tokens'),
+  startTokenCheck: () => ipcRenderer.invoke('start-token-check'),
+  stopTokenCheck: () => ipcRenderer.invoke('stop-token-check'),
+
+  // 监听 token 刷新事件
+  onTokenRefreshed: (
+    callback: (data: { authId: string; accessToken: string; expiresAt: number }) => void
+  ) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      data: { authId: string; accessToken: string; expiresAt: number }
+    ): void => {
+      callback(data)
+    }
+    ipcRenderer.on('token-refreshed', listener)
+    return () => ipcRenderer.removeListener('token-refreshed', listener)
+  }
 }
 
 /**

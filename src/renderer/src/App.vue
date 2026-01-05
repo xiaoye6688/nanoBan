@@ -1,52 +1,66 @@
 <template>
-  <div class="app-container">
-    <!-- 顶部导航栏 -->
-    <el-header class="app-header" height="60px">
-      <div class="header-content">
-        <div class="logo-area">
-          <h1>nanoBan</h1>
-        </div>
-
-        <!-- 当前配置展示 -->
-        <div class="header-config">
-          <div class="config-tag">
-            <span class="label">当前配置:</span>
-            <span class="value">{{ configStore.imageSize }}</span>
-            <span class="divider">|</span>
-            <span class="value">{{ configStore.aspectRatio }}</span>
-          </div>
-        </div>
-
-        <div class="header-actions">
-          <template v-if="authStore.isAuthenticated">
-            <el-tag type="success" size="small" effect="dark">已认证</el-tag>
-            <el-button type="danger" link size="small" @click="handleLogout">登出</el-button>
-          </template>
-          <template v-else>
-            <el-tag type="warning" size="small" effect="dark">未认证</el-tag>
-          </template>
-          <el-button type="primary" size="small" @click="showAuthDialog = true">设置</el-button>
-        </div>
-      </div>
-    </el-header>
+  <div class="flex h-screen w-full flex-col bg-[#050511] text-white overflow-hidden relative">
+    <!-- 背景星空效果 -->
+    <div
+      class="absolute inset-0 z-0 pointer-events-none opacity-50"
+      style="
+        background-image: radial-gradient(white 1px, transparent 1px);
+        background-size: 50px 50px;
+      "
+    ></div>
 
     <!-- 主内容区域 -->
-    <el-container class="main-container">
-      <!-- 左侧面板 -->
-      <el-aside width="280px" class="side-panel">
-        <el-scrollbar>
-          <div class="side-content">
-            <SessionPanel />
-            <ConfigPanel />
-          </div>
-        </el-scrollbar>
-      </el-aside>
+    <main
+      class="relative flex-1 z-10 w-full h-full flex flex-col transition-all duration-300 ease-out"
+      :class="{ 'pl-0': !showSidebar, 'pl-0 md:pl-72': showSidebar }"
+    >
+      <!-- 顶部导航 -->
+      <header
+        class="flex justify-between items-center p-6 absolute top-0 right-0 z-20 transition-all duration-300 ease-in-out"
+        :style="{ left: showSidebar ? '18rem' : '0' }"
+      >
+        <div class="flex items-center gap-4">
+          <!-- 侧边栏开关 -->
+          <button
+            class="flex items-center justify-center h-10 w-10 rounded-full bg-white/15 border border-white/20 text-white hover:bg-white/25 transition-all active:scale-95"
+            title="历史记录"
+            @click="showSidebar = !showSidebar"
+          >
+            <Icon icon="mdi:history" class="text-xl" />
+          </button>
 
-      <!-- 中间对话区域 -->
-      <el-main class="chat-area">
-        <ChatView />
-      </el-main>
-    </el-container>
+          <h1 class="text-lg font-bold tracking-tight text-white/80">nanoBan</h1>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button
+            class="flex items-center justify-center h-8 w-8 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            title="设置"
+            @click="showAuthDialog = true"
+          >
+            <Icon icon="mdi:cog" class="text-xl" />
+          </button>
+        </div>
+      </header>
+
+      <!-- 对话视图 -->
+      <ChatView />
+
+      <!-- 侧边栏 Drawer -->
+      <div
+        class="absolute top-0 left-0 bottom-0 w-72 bg-[#0A0A16] border-r border-white/5 shadow-2xl z-30 transition-transform duration-300 ease-in-out transform"
+        :class="showSidebar ? 'translate-x-0' : '-translate-x-full'"
+      >
+        <SessionPanel @close="showSidebar = false" />
+      </div>
+    </main>
+
+    <!-- 遮罩 (移动端显示) -->
+    <div
+      v-if="showSidebar"
+      class="fixed inset-0 bg-black/50 backdrop-blur-sm z-20 md:hidden animate-fade-in"
+      @click="showSidebar = false"
+    ></div>
 
     <!-- 设置对话框 -->
     <AuthDialog v-model="showAuthDialog" />
@@ -55,168 +69,41 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { Icon } from '@iconify/vue'
 import { useAuthStore } from './stores/auth'
 import { useConfigStore } from './stores/config'
 import { useChatStore } from './stores/chat'
 import ChatView from './views/ChatView.vue'
-import ConfigPanel from './components/ConfigPanel.vue'
 import SessionPanel from './components/SessionPanel.vue'
 import AuthDialog from './components/AuthDialog.vue'
 
 const authStore = useAuthStore()
 const configStore = useConfigStore()
 const chatStore = useChatStore()
-
 const showAuthDialog = ref(false)
+const showSidebar = ref(false) // 默认收起侧边栏，保持沉浸式体验
 
 // 初始化应用
 onMounted(async () => {
-  // 从本地存储加载配置
   await authStore.loadFromStorage()
   await configStore.loadConfig()
-  await chatStore.initialize()
-
-  // 初始化 token 刷新事件监听（接收主进程的自动刷新通知）
   authStore.setupTokenRefreshListener()
+  await chatStore.initialize()
 })
 
 // 清理事件监听
 onUnmounted(() => {
   authStore.cleanupTokenRefreshListener()
 })
-
-// 处理登出
-const handleLogout = (): void => {
-  authStore.logout()
-  ElMessage.success('已登出')
-}
 </script>
-
-<style scoped>
-.app-container {
-  width: 100%;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #f5f7fa;
-}
-
-.app-header {
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
-  padding: 0 20px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-  z-index: 10;
-}
-
-.header-content {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.logo-area h1 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #303133;
-  letter-spacing: -0.5px;
-}
-
-.header-config {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-}
-
-.config-tag {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #f4f4f5;
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 13px;
-  color: #606266;
-  border: 1px solid #e4e7ed;
-}
-
-.config-tag .label {
-  color: #909399;
-}
-
-.config-tag .value {
-  font-weight: 600;
-  color: #303133;
-}
-
-.config-tag .divider {
-  color: #dcdfe6;
-  font-size: 12px;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.main-container {
-  flex: 1;
-  overflow: hidden;
-}
-
-.side-panel {
-  background: #fff;
-  border-right: 1px solid #e4e7ed;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.side-content {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.chat-area {
-  padding: 0;
-  overflow: hidden;
-  position: relative;
-}
-</style>
 
 <style>
 /* 全局样式：图片预览器样式优化 */
-.el-image-viewer__wrapper {
+.image-viewer-wrapper {
   z-index: 3000 !important;
 }
 
-.el-image-viewer__mask {
-  background-color: rgba(0, 0, 0, 0.9) !important; /* 深色半透明背景,突出图片 */
-}
-
-.el-image-viewer__canvas {
-  z-index: 3001 !important; /* 确保图片在遮罩之上 */
-}
-
-/* 优化预览器的关闭按钮和操作栏 */
-.el-image-viewer__btn {
-  background-color: rgba(255, 255, 255, 0.1) !important;
-  z-index: 3002 !important; /* 按钮在最上层 */
-}
-
-.el-image-viewer__btn:hover {
-  background-color: rgba(255, 255, 255, 0.2) !important;
-}
-
-.el-image-viewer__actions {
-  background-color: rgba(0, 0, 0, 0.7) !important;
-  backdrop-filter: blur(10px);
-  z-index: 3002 !important; /* 操作栏在最上层 */
+.image-viewer-mask {
+  background-color: rgba(0, 0, 0, 0.9) !important;
 }
 </style>

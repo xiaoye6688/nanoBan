@@ -15,7 +15,8 @@ import {
   readAuth,
   saveAuth,
   deleteAuth,
-  getFileUrl
+  getFileUrl,
+  getImageStats
 } from '../storage'
 
 /**
@@ -133,6 +134,15 @@ export function setupStorageIPC(): void {
       return await readImageAsBase64(relativePath)
     } catch (error: unknown) {
       console.error('读取图片失败:', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle('get-image-stats', async (_, relativePath: string) => {
+    try {
+      return await getImageStats(relativePath)
+    } catch (error: unknown) {
+      console.error('获取图片统计失败:', error)
       throw error
     }
   })

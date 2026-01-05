@@ -655,3 +655,35 @@ export async function deleteAuth(authId: string): Promise<void> {
   const fileName = ensureJsonExtension(authId)
   await fs.rm(join(authsDir, fileName), { force: true })
 }
+
+/**
+ * 图片统计信息接口
+ */
+export interface ImageStats {
+  size: number // 文件大小（字节）
+  sizeFormatted: string // 格式化后的文件大小
+}
+
+/**
+ * 格式化文件大小为 MB
+ */
+function formatFileSize(bytes: number): string {
+  const mb = bytes / (1024 * 1024)
+  if (mb >= 1) {
+    return `${mb.toFixed(1)}MB`
+  }
+  const kb = bytes / 1024
+  return `${kb.toFixed(0)}KB`
+}
+
+/**
+ * 获取图片文件统计信息
+ */
+export async function getImageStats(relativePath: string): Promise<ImageStats> {
+  const absolutePath = resolveStoragePath(relativePath)
+  const stat = await fs.stat(absolutePath)
+  return {
+    size: stat.size,
+    sizeFormatted: formatFileSize(stat.size)
+  }
+}

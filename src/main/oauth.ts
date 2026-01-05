@@ -39,6 +39,7 @@ interface OAuthSession {
   authUrl: string
   tokenPromise: Promise<OAuthToken>
   cleanup: () => void
+  cancel: () => void // 取消并 reject Promise
 }
 
 // 当前活动的 OAuth 会话
@@ -64,13 +65,14 @@ export function createOAuthSession(): { sessionId: string; authUrl: string } {
   const state = generateRandomState()
   const authUrl = buildAuthUrl(state)
   const sessionId = `oauth_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-  const { tokenPromise, cleanup } = startCallbackServer(state)
+  const { tokenPromise, cleanup, cancel } = startCallbackServer(state)
 
   activeSession = {
     id: sessionId,
     authUrl,
     tokenPromise,
-    cleanup
+    cleanup,
+    cancel
   }
 
   return { sessionId, authUrl }
@@ -104,6 +106,18 @@ export async function waitForOAuthToken(sessionId: string): Promise<OAuthToken> 
 }
 
 /**
+ * 取消当前 OAuth 会话
+ */
+export function cancelOAuthSession(): void {
+  if (activeSession) {
+    activeSession.cancel() // 先 reject Promise
+    activeSession.cleanup() // 再关闭服务器
+    activeSession = null
+    console.log('OAuth 会话已取消')
+  }
+}
+
+/**
  * 启动 Antigravity OAuth 2.0 授权流程
  */
 export async function startOAuthFlow(): Promise<OAuthToken> {
@@ -127,8 +141,11 @@ export async function startOAuthFlow(): Promise<OAuthToken> {
 function startCallbackServer(expectedState: string): {
   tokenPromise: Promise<OAuthToken>
   cleanup: () => void
+  cancel: () => void
 } {
   let server: http.Server | null = null
+  let rejectPromise: ((reason: Error) => void) | null = null
+
   const cleanup = (): void => {
     if (server) {
       server.close()
@@ -137,7 +154,15 @@ function startCallbackServer(expectedState: string): {
     }
   }
 
+  const cancel = (): void => {
+    if (rejectPromise) {
+      rejectPromise(new Error('用户取消授权'))
+      rejectPromise = null
+    }
+  }
+
   const tokenPromise = new Promise<OAuthToken>((resolve, reject) => {
+    rejectPromise = reject // 保存 reject 函数供 cancel 使用
     server = http.createServer(async (req, res) => {
       if (req.url?.startsWith('/oauth-callback')) {
         try {
@@ -233,7 +258,7 @@ function startCallbackServer(expectedState: string): {
     })
   })
 
-  return { tokenPromise, cleanup }
+  return { tokenPromise, cleanup, cancel }
 }
 
 /**

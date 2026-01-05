@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import {
   createOAuthSession,
   waitForOAuthToken,
+  cancelOAuthSession,
   startOAuthFlow,
   refreshAccessToken,
   setOAuthConfig
@@ -38,6 +39,17 @@ export function setupOAuthIPC(): void {
       return await waitForOAuthToken(sessionId)
     } catch (error: unknown) {
       console.error('等待 OAuth Token 失败:', error)
+      throw error
+    }
+  })
+
+  // 取消 OAuth 会话
+  ipcMain.handle('cancel-oauth-session', () => {
+    try {
+      cancelOAuthSession()
+      return { success: true }
+    } catch (error: unknown) {
+      console.error('取消 OAuth 会话失败:', error)
       throw error
     }
   })

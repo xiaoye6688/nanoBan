@@ -8,6 +8,7 @@ const api = {
   startOAuth: () => ipcRenderer.invoke('start-oauth'),
   createOAuthSession: () => ipcRenderer.invoke('create-oauth-session'),
   waitOAuthToken: (sessionId: string) => ipcRenderer.invoke('wait-oauth-token', sessionId),
+  cancelOAuthSession: () => ipcRenderer.invoke('cancel-oauth-session'),
   refreshOAuthToken: (refreshToken: string) =>
     ipcRenderer.invoke('refresh-oauth-token', refreshToken),
   setOAuthConfig: (config: { clientId: string; clientSecret: string; redirectUri?: string }) =>
@@ -29,6 +30,7 @@ const api = {
     ipcRenderer.invoke('save-storage-image', base64Data, options),
   getFileUrl: (relativePath: string) => ipcRenderer.invoke('get-file-url', relativePath),
   readImageBase64: (relativePath: string) => ipcRenderer.invoke('read-image-base64', relativePath),
+  getImageStats: (relativePath: string) => ipcRenderer.invoke('get-image-stats', relativePath),
   listAuths: () => ipcRenderer.invoke('list-auths'),
   readAuth: (authId: string) => ipcRenderer.invoke('read-auth', authId),
   saveAuth: (record: Record<string, unknown>) => ipcRenderer.invoke('save-auth', record),

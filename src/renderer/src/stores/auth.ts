@@ -275,6 +275,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /**
+   * 取消正在进行的 OAuth 授权
+   */
+  async function cancelOAuth(): Promise<void> {
+    // 先调用主进程取消 OAuth 会话（关闭回调服务器）
+    try {
+      await window.api.cancelOAuthSession()
+    } catch (error) {
+      console.error('取消 OAuth 会话失败:', error)
+    }
+    // 清理前端状态
+    pendingSessionId.value = null
+    pendingAuthUrl.value = ''
+    isAuthorizing.value = false
+  }
+
   return {
     // 状态
     oauthToken,
@@ -298,6 +314,7 @@ export const useAuthStore = defineStore('auth', () => {
     saveOAuthToken,
     selectAuth,
     removeAuth,
+    cancelOAuth,
     // Token 刷新事件监听
     setupTokenRefreshListener,
     cleanupTokenRefreshListener

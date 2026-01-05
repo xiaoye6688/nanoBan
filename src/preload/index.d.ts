@@ -24,6 +24,12 @@ export interface SaveImageResult {
   filePath?: string
 }
 
+// 图片统计信息接口
+export interface ImageStats {
+  size: number
+  sizeFormatted: string
+}
+
 export interface AppSettings {
   storagePath: string
   imageSize: string
@@ -99,6 +105,7 @@ export interface CustomAPI {
   startOAuth: () => Promise<OAuthToken>
   createOAuthSession: () => Promise<{ sessionId: string; authUrl: string }>
   waitOAuthToken: (sessionId: string) => Promise<OAuthToken>
+  cancelOAuthSession: () => Promise<{ success: boolean }>
   refreshOAuthToken: (refreshToken: string) => Promise<OAuthToken>
   setOAuthConfig: (config: OAuthConfig) => Promise<{ success: boolean }>
   openExternal: (url: string) => Promise<{ success: boolean }>
@@ -119,6 +126,7 @@ export interface CustomAPI {
   ) => Promise<{ relativePath: string; fileName: string }>
   getFileUrl: (relativePath: string) => Promise<string>
   readImageBase64: (relativePath: string) => Promise<string>
+  getImageStats: (relativePath: string) => Promise<ImageStats>
   listAuths: () => Promise<AuthSummary[]>
   readAuth: (authId: string) => Promise<AuthRecord | null>
   saveAuth: (record: Record<string, unknown>) => Promise<AuthSummary>

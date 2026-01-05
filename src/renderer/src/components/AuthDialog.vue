@@ -1,193 +1,207 @@
 <template>
-  <el-dialog
-    v-model="dialogVisible"
-    title="设置"
-    width="600px"
-    :before-close="handleClose"
-    destroy-on-close
-  >
-    <el-tabs v-model="activeTab" class="settings-tabs">
-      <el-tab-pane label="授权设置" name="auth">
-        <div class="section">
-          <div class="section-title">已保存的授权</div>
-          <div v-if="authStore.auths.length === 0" class="empty-state">暂无授权信息</div>
-          <div v-else class="auth-list">
+  <BaseDialog v-model="dialogVisible" title="设置" width="600px" @close="handleClose">
+    <BaseTabs v-model="activeTab">
+      <BaseTabPane label="授权设置" name="auth">
+        <div class="flex flex-col gap-4">
+          <div class="text-sm font-semibold text-white/80">已保存的授权</div>
+          <div
+            v-if="authStore.auths.length === 0"
+            class="rounded-xl bg-white/5 py-6 text-center text-[13px] text-white/40"
+          >
+            暂无授权信息
+          </div>
+          <div v-else class="flex flex-col gap-2.5">
             <div
               v-for="auth in authStore.auths"
               :key="auth.id"
-              :class="['auth-item', { active: auth.id === authStore.activeAuthId }]"
+              :class="[
+                'flex items-center justify-between rounded-xl border p-3 transition-all',
+                auth.id === authStore.activeAuthId
+                  ? 'border-[#FFF9F2]/30 bg-[#FFF9F2]/10'
+                  : 'border-white/10 hover:border-white/20'
+              ]"
             >
-              <div class="auth-info">
-                <div class="auth-name">{{ auth.label }}</div>
-                <div class="auth-meta">
+              <div class="flex flex-col gap-1">
+                <div class="text-sm font-semibold text-white/80">{{ auth.label }}</div>
+                <div class="flex flex-col gap-0.5 text-xs text-white/50">
                   <span>{{ auth.email || auth.projectId || '未命名账号' }}</span>
                   <span>过期: {{ formatExpires(auth.expiresAt) }}</span>
                 </div>
               </div>
-              <div class="auth-actions">
-                <el-button
+              <div class="flex gap-2">
+                <BaseButton
                   size="small"
                   type="primary"
                   :disabled="auth.id === authStore.activeAuthId"
                   @click="handleSelectAuth(auth.id)"
                 >
                   使用
-                </el-button>
-                <el-button size="small" @click="handleRefreshToken(auth.id)">刷新</el-button>
-                <el-popconfirm
+                </BaseButton>
+                <BaseButton size="small" @click="handleRefreshToken(auth.id)">刷新</BaseButton>
+                <BasePopconfirm
                   title="确定删除该授权？"
-                  confirm-button-text="删除"
-                  cancel-button-text="取消"
+                  confirm-text="删除"
+                  cancel-text="取消"
+                  confirm-type="danger"
                   @confirm="handleRemoveAuth(auth.id)"
                 >
-                  <template #reference>
-                    <el-button size="small" type="danger" text>删除</el-button>
-                  </template>
-                </el-popconfirm>
+                  <BaseButton size="small" type="danger" variant="ghost">删除</BaseButton>
+                </BasePopconfirm>
               </div>
             </div>
           </div>
         </div>
 
-        <el-divider />
+        <hr class="my-6 border-white/10" />
 
-        <div class="section">
-          <div class="section-title">新增授权</div>
-          <div class="auth-link-actions">
-            <el-button type="success" :loading="linkLoading" @click="handleCreateAuthLink">
+        <div class="flex flex-col gap-4">
+          <div class="text-sm font-semibold text-white/80">新增授权</div>
+          <div class="flex items-center gap-2.5">
+            <BaseButton type="success" :loading="linkLoading" @click="handleCreateAuthLink">
               生成授权链接
-            </el-button>
-            <el-button
+            </BaseButton>
+            <BaseButton
               :disabled="!authStore.pendingAuthUrl"
-              :icon="Link"
+              icon="mdi:link"
               @click="handleOpenAuthLink"
             >
               打开链接
-            </el-button>
-            <el-button
+            </BaseButton>
+            <BaseButton
               :disabled="!authStore.pendingAuthUrl"
-              :icon="CopyDocument"
+              icon="mdi:content-copy"
               @click="handleCopyAuthLink"
             >
               复制链接
-            </el-button>
+            </BaseButton>
           </div>
 
-          <el-input
+          <BaseInput
             v-if="authStore.pendingAuthUrl"
-            v-model="authStore.pendingAuthUrl"
+            :model-value="authStore.pendingAuthUrl"
             readonly
             placeholder="等待生成授权链接"
-            class="auth-link-input"
           />
 
-          <el-alert
-            v-if="!authStore.pendingAuthUrl"
-            type="info"
-            :closable="false"
-            show-icon
-            style="margin-top: 10px"
-          >
-            点击“生成授权链接”后，将得到一个授权地址。选择打开浏览器或复制链接进行授权。
-          </el-alert>
+          <BaseAlert v-if="!authStore.pendingAuthUrl" type="info" :closable="false">
+            点击"生成授权链接"后，将得到一个授权地址。选择打开浏览器或复制链接进行授权。
+          </BaseAlert>
 
-          <el-alert
-            v-if="authStore.isAuthorizing"
-            type="warning"
-            :closable="false"
-            show-icon
-            style="margin-top: 10px"
-          >
-            已生成授权链接，等待浏览器回调中…
-          </el-alert>
+          <BaseAlert v-if="authStore.isAuthorizing" type="warning" :closable="false">
+            <div class="flex items-center justify-between">
+              <span>已生成授权链接，等待浏览器回调中…</span>
+              <BaseButton size="small" variant="ghost" @click="handleCancelAuth"> 取消 </BaseButton>
+            </div>
+          </BaseAlert>
         </div>
-      </el-tab-pane>
+      </BaseTabPane>
 
-      <el-tab-pane label="常规设置" name="general">
-        <div class="section">
-          <div class="section-title">存储目录</div>
+      <BaseTabPane label="常规设置" name="general">
+        <div class="flex flex-col gap-4">
+          <div class="text-sm font-semibold text-white/80">存储目录</div>
 
-          <div class="storage-path-control">
-            <el-input v-model="storagePath" readonly placeholder="选择存储路径">
+          <div class="flex gap-2">
+            <BaseInput
+              :model-value="storagePath"
+              readonly
+              placeholder="选择存储路径"
+              class="flex-1"
+            >
               <template #append>
-                <el-button :icon="Folder" title="选择文件夹" @click="handleSelectStorage" />
+                <button
+                  class="flex h-full items-center rounded-r-lg border-l border-white/10 bg-white/5 px-3 text-white/50 transition-colors hover:bg-white/10 hover:text-white/70"
+                  title="选择文件夹"
+                  @click="handleSelectStorage"
+                >
+                  <Icon icon="mdi:folder" class="h-4 w-4" />
+                </button>
               </template>
-            </el-input>
+            </BaseInput>
           </div>
 
-          <div class="setting-item">
-            <div class="setting-label">
+          <div class="flex items-center justify-between py-2">
+            <div class="flex items-center gap-1.5 text-sm text-white/60">
               <span>迁移文件</span>
-              <el-tooltip
+              <BaseTooltip
                 content="开启后，修改存储目录时会自动将旧目录下的聊天记录和图片迁移到新目录。"
-                placement="top"
               >
-                <el-icon class="help-icon"><QuestionFilled /></el-icon>
-              </el-tooltip>
+                <Icon icon="mdi:help-circle" class="h-4 w-4 cursor-help text-white/30" />
+              </BaseTooltip>
             </div>
-            <el-switch v-model="migrateFiles" />
+            <BaseSwitch v-model="migrateFiles" />
           </div>
 
-          <el-alert type="info" :closable="false" show-icon style="margin-top: 8px">
+          <BaseAlert type="info" :closable="false">
             聊天记录、图片与授权文件将保存在该目录下。
-          </el-alert>
+          </BaseAlert>
         </div>
-      </el-tab-pane>
+      </BaseTabPane>
 
-      <el-tab-pane label="数据管理" name="data">
-        <div class="section">
-          <div class="section-title">数据维护</div>
-          <div class="data-actions-grid">
-            <div class="data-card">
-              <div class="data-card-icon export">
-                <el-icon><Download /></el-icon>
+      <BaseTabPane label="数据管理" name="data">
+        <div class="flex flex-col gap-4">
+          <div class="text-sm font-semibold text-white/80">数据维护</div>
+          <div class="grid grid-cols-2 gap-4">
+            <div
+              class="flex items-center gap-3 rounded-xl border border-white/10 p-4 transition-all hover:border-[#FFF9F2]/30 hover:bg-white/5"
+            >
+              <div
+                class="flex h-10 w-10 items-center justify-center rounded-lg bg-green-900/30 text-xl text-green-400"
+              >
+                <Icon icon="mdi:download" />
               </div>
-              <div class="data-card-content">
-                <div class="title">导出数据</div>
-                <div class="desc">备份所有对话记录</div>
+              <div class="flex-1">
+                <div class="text-sm font-semibold text-white/80">导出数据</div>
+                <div class="mt-0.5 text-xs text-white/50">备份所有对话记录</div>
               </div>
-              <el-button size="small" @click="handleExportMessages">导出</el-button>
+              <BaseButton size="small" @click="handleExportMessages">导出</BaseButton>
             </div>
 
-            <div class="data-card">
-              <div class="data-card-icon delete">
-                <el-icon><Delete /></el-icon>
+            <div
+              class="flex items-center gap-3 rounded-xl border border-white/10 p-4 transition-all hover:border-red-500/30 hover:bg-red-900/10"
+            >
+              <div
+                class="flex h-10 w-10 items-center justify-center rounded-lg bg-red-900/30 text-xl text-red-400"
+              >
+                <Icon icon="mdi:delete" />
               </div>
-              <div class="data-card-content">
-                <div class="title">清空数据</div>
-                <div class="desc">删除所有历史记录</div>
+              <div class="flex-1">
+                <div class="text-sm font-semibold text-white/80">清空数据</div>
+                <div class="mt-0.5 text-xs text-white/50">删除所有历史记录</div>
               </div>
-              <el-popconfirm
+              <BasePopconfirm
                 title="确定清空所有数据？不可恢复。"
-                confirm-button-text="清空"
-                cancel-button-text="取消"
+                confirm-text="清空"
+                cancel-text="取消"
+                confirm-type="danger"
                 @confirm="handleClearMessages"
               >
-                <template #reference>
-                  <el-button size="small" type="danger" plain>清空</el-button>
-                </template>
-              </el-popconfirm>
+                <BaseButton size="small" type="danger" variant="outline">清空</BaseButton>
+              </BasePopconfirm>
             </div>
           </div>
         </div>
-      </el-tab-pane>
-    </el-tabs>
-  </el-dialog>
+      </BaseTabPane>
+    </BaseTabs>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import {
-  CopyDocument,
-  Link,
-  Folder,
-  QuestionFilled,
-  Download,
-  Delete
-} from '@element-plus/icons-vue'
+import { Icon } from '@iconify/vue'
 import { useAuthStore } from '../stores/auth'
 import { useChatStore } from '../stores/chat'
+import {
+  BaseDialog,
+  BaseTabs,
+  BaseTabPane,
+  BaseButton,
+  BaseInput,
+  BaseAlert,
+  BaseSwitch,
+  BaseTooltip,
+  BasePopconfirm,
+  toast
+} from './ui'
 
 const props = defineProps<{
   modelValue: boolean
@@ -228,10 +242,10 @@ const handleCreateAuthLink = async (): Promise<void> => {
   linkLoading.value = true
   try {
     await authStore.createOAuthLink()
-    ElMessage.success('授权链接已生成')
+    toast.success('授权链接已生成')
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '生成授权链接失败'
-    ElMessage.error(errorMessage)
+    toast.error(errorMessage)
   } finally {
     linkLoading.value = false
   }
@@ -246,30 +260,30 @@ const handleCopyAuthLink = async (): Promise<void> => {
   if (!authStore.pendingAuthUrl) return
   try {
     await navigator.clipboard.writeText(authStore.pendingAuthUrl)
-    ElMessage.success('授权链接已复制')
+    toast.success('授权链接已复制')
   } catch (error) {
     console.error('复制链接失败:', error)
-    ElMessage.error('复制链接失败')
+    toast.error('复制链接失败')
   }
 }
 
 const handleSelectAuth = async (authId: string): Promise<void> => {
   try {
     await authStore.selectAuth(authId)
-    ElMessage.success('授权已切换')
+    toast.success('授权已切换')
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '切换失败'
-    ElMessage.error(errorMessage)
+    toast.error(errorMessage)
   }
 }
 
 const handleRemoveAuth = async (authId: string): Promise<void> => {
   try {
     await authStore.removeAuth(authId)
-    ElMessage.success('授权已删除')
+    toast.success('授权已删除')
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '删除失败'
-    ElMessage.error(errorMessage)
+    toast.error(errorMessage)
   }
 }
 
@@ -279,11 +293,16 @@ const handleRefreshToken = async (authId: string): Promise<void> => {
   }
   try {
     await authStore.refreshOAuthToken()
-    ElMessage.success('Token 已刷新')
+    toast.success('Token 已刷新')
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '刷新失败'
-    ElMessage.error(errorMessage)
+    toast.error(errorMessage)
   }
+}
+
+const handleCancelAuth = async (): Promise<void> => {
+  await authStore.cancelOAuth()
+  toast.info('已取消授权')
 }
 
 const handleSelectStorage = async (): Promise<void> => {
@@ -295,10 +314,10 @@ const handleSelectStorage = async (): Promise<void> => {
     storagePath.value = settings.storagePath
     await chatStore.initialize()
     await authStore.loadAuths()
-    ElMessage.success('存储目录已更新')
+    toast.success('存储目录已更新')
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '设置失败'
-    ElMessage.error(errorMessage)
+    toast.error(errorMessage)
   }
 }
 
@@ -321,7 +340,7 @@ const handleClose = (): void => {
 const handleClearMessages = async (): Promise<void> => {
   try {
     chatStore.clearMessages()
-    ElMessage.success('对话历史已清空')
+    toast.success('对话历史已清空')
   } catch (error) {
     console.error(error)
   }
@@ -338,175 +357,10 @@ const handleExportMessages = (): void => {
     a.download = `gemini-chat-${Date.now()}.json`
     a.click()
     URL.revokeObjectURL(url)
-    ElMessage.success('对话已导出')
+    toast.success('对话已导出')
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : '导出失败'
-    ElMessage.error(errorMessage)
+    toast.error(errorMessage)
   }
 }
 </script>
-
-<style scoped>
-:deep(.el-dialog__body) {
-  padding: 10px 24px 24px;
-}
-
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.section-title {
-  font-weight: 600;
-  color: #303133;
-  font-size: 14px;
-  margin-bottom: 4px;
-}
-
-.auth-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.auth-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  transition: all 0.2s;
-}
-
-.auth-item:hover {
-  border-color: #c0c4cc;
-}
-
-.auth-item.active {
-  border-color: #409eff;
-  background: #ecf5ff;
-}
-
-.auth-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.auth-name {
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.auth-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
-  color: #909399;
-}
-
-.auth-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.auth-link-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.auth-link-input {
-  margin-top: 8px;
-}
-
-.empty-state {
-  padding: 24px 0;
-  text-align: center;
-  color: #909399;
-  font-size: 13px;
-  background: #f5f7fa;
-  border-radius: 8px;
-}
-
-.setting-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-}
-
-.setting-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  color: #606266;
-}
-
-.help-icon {
-  color: #909399;
-  font-size: 16px;
-  cursor: help;
-}
-
-.data-actions-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-
-.data-card {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  transition: all 0.2s;
-}
-
-.data-card:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
-}
-
-.data-card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-}
-
-.data-card-icon.export {
-  background: #f0f9eb;
-  color: #67c23a;
-}
-
-.data-card-icon.delete {
-  background: #fef0f0;
-  color: #f56c6c;
-}
-
-.data-card-content {
-  flex: 1;
-}
-
-.data-card-content .title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.data-card-content .desc {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 2px;
-}
-</style>

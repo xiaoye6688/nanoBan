@@ -1,14 +1,14 @@
 # nanoBan - Gemini 图像生成器
 
-基于 Electron + Vue 3 + TypeScript + Tailwind CSS 构建的 Google Gemini-3-pro-image-preview 图像生成桌面应用。
+基于 Electron + Vue 3 + TypeScript + Tailwind CSS 构建的 Gemini 图像生成桌面应用。
 
 ## ✨ 功能特性
 
-- 🎨 **AI 图像生成**: 使用 Gemini-3-pro-image-preview 模型生成高质量图像
+- 🎨 **AI 图像生成**: 使用 Gemini 图像生成模型生成高质量图像
 - 📐 **多种分辨率**: 支持 1K、2K、4K 三种分辨率选择
-- 🖼️ **灵活宽高比**: 支持 10 种常见宽高比（1:1、16:9、9:16、4:3 等）
+- 🖼️ **灵活宽高比**: 支持 8 种常见宽高比（1:1、16:9、9:16、4:3、3:4、3:2、2:3、21:9）
 - 🔄 **图生图功能**: 支持上传参考图片进行图像生成
-- 🔐 **双重认证**: 支持 API Key 和 OAuth 2.0 两种认证方式
+- 🔐 **一键登录**: 使用 Antigravity OAuth 一键登录 Google 账号
 - 💾 **历史记录**: 自动保存对话历史和生成的图片
 - ⚙️ **预设配置**: 内置多种常用配置预设，快速切换
 - 📥 **导出功能**: 支持导出对话历史
@@ -47,19 +47,11 @@ pnpm build:linux
 
 ## 🔑 认证配置
 
-### 方式一：API Key（推荐）
-
-1. 访问 [Google AI Studio](https://ai.google.dev/)
-2. 创建或登录您的账号
-3. 生成 API Key
-4. 在应用中点击"设置认证"，选择"API Key"标签
-5. 输入您的 API Key 并保存
-
-### 方式二：Antigravity OAuth（一键登录）
+### Antigravity OAuth（一键登录）
 
 Antigravity OAuth 使用预配置的 Google OAuth 客户端，无需手动配置：
 
-1. 在应用中点击"设置认证"，选择"Antigravity OAuth"标签
+1. 在应用中点击右上角设置图标
 2. 点击"使用 Google 账号登录"按钮
 3. 在打开的浏览器窗口中使用您的 Google 账号登录
 4. 授权应用访问所需权限
@@ -67,10 +59,9 @@ Antigravity OAuth 使用预配置的 Google OAuth 客户端，无需手动配置
 
 **Antigravity OAuth 的优势**：
 
-- 无需手动配置 Client ID 和 Secret
-- 自动获取 Google Cloud 项目 ID
+- 无需任何手动配置
 - 支持 Token 自动刷新
-- 安全性更高
+- 安全便捷
 
 ## 📖 使用说明
 
@@ -122,14 +113,25 @@ nanoBan/
 │           ├── types/     # TypeScript 类型
 │           │   └── gemini.ts
 │           ├── components/ # Vue 组件
-│           │   ├── ui/    # 基础 UI 组件 (Button, Dialog, Input, Tabs 等)
+│           │   ├── ui/    # 基础 UI 组件
+│           │   │   ├── BaseAlert.vue      # 警告提示
+│           │   │   ├── BaseButton.vue     # 按钮
+│           │   │   ├── BaseCard.vue       # 卡片
+│           │   │   ├── BaseDialog.vue     # 对话框
+│           │   │   ├── BaseInput.vue      # 输入框
+│           │   │   ├── BasePopconfirm.vue # 确认气泡
+│           │   │   ├── BaseRadioGroup.vue # 单选组
+│           │   │   ├── BaseSelect.vue     # 下拉选择
+│           │   │   ├── BaseSwitch.vue     # 开关
+│           │   │   ├── BaseTabs.vue       # 标签页
+│           │   │   ├── BaseToast.vue      # 消息提示
+│           │   │   └── BaseTooltip.vue    # 工具提示
 │           │   ├── AuthDialog.vue   # 认证设置弹窗
 │           │   └── SessionPanel.vue # 会话历史面板
 │           ├── views/     # 视图组件
 │           │   └── ChatView.vue     # 主聊天视图
 │           ├── assets/    # 静态资源
 │           └── App.vue    # 根组件
-├── docs/                  # 文档
 ├── tailwind.config.js     # Tailwind CSS 配置
 ├── postcss.config.js      # PostCSS 配置
 ├── electron.vite.config.ts # Vite 配置
@@ -141,7 +143,7 @@ nanoBan/
 - **框架**: Electron 39.x + Vue 3.5.x
 - **语言**: TypeScript 5.9.x
 - **构建工具**: electron-vite 5.x
-- **UI 框架**: Tailwind CSS + 自定义组件
+- **UI 框架**: Tailwind CSS 4.x + 自定义组件
 - **状态管理**: Pinia 3.x
 - **HTTP 客户端**: Axios
 - **数据存储**: electron-store
@@ -164,36 +166,29 @@ nanoBan/
 - 9:16 - 竖屏
 - 4:3 - 经典横屏
 - 3:4 - 经典竖屏
+- 3:2 - 摄影常用
+- 2:3 - 竖版摄影
 - 21:9 - 超宽屏幕
-- 2:3, 3:2, 4:5, 5:4 - 其他常用比例
 
 ## ⚠️ 注意事项
 
-1. **API Key 安全**: 请妥善保管您的 API Key，不要分享给他人
-2. **网络要求**: 需要稳定的网络连接才能访问 Gemini API
-3. **配额限制**: Google AI API 有使用配额限制，请注意您的使用量
-4. **图片格式**: 参考图片建议使用 JPEG 或 PNG 格式
-5. **提示词语言**: Gemini API 目前仅支持英文提示词
+1. **配额限制**: 每个 Google 账号每 5 小时限制生成 20 张图片
+2. **图片格式**: 参考图片建议使用 JPEG 或 PNG 格式
 
 ## 🐛 常见问题
 
-### 无法连接到 API
-
-- 检查网络连接是否正常
-- 确认 API Key 是否正确
-- 检查是否超出 API 配额限制
-
-### OAuth 授权失败
-
-- 确认 OAuth 配置信息是否正确
-- 检查回调 URL 是否正确设置
-- 确保 Google Cloud 项目中已启用相应的 API
-
 ### 图片生成失败
 
+- 检查是否超出配额限制（5小时20张）
 - 检查提示词是否符合 Google 内容政策
 - 尝试降低图片分辨率
 - 查看控制台错误信息
+
+### OAuth 授权失败
+
+- 检查网络连接是否正常
+- 尝试重新点击登录按钮
+- 清除浏览器缓存后重试
 
 ## 📄 License
 
@@ -201,8 +196,5 @@ MIT
 
 ## 👏 致谢
 
-- [Google Gemini](https://ai.google.dev/) - 提供强大的 AI 图像生成能力
-- [Electron](https://www.electronjs.org/) - 跨平台桌面应用框架
-- [Vue.js](https://vuejs.org/) - 渐进式 JavaScript 框架
-- [Tailwind CSS](https://tailwindcss.com/) - 实用优先的 CSS 框架
-- [electron-vite](https://electron-vite.org/) - 快速的 Electron 构建工具
+- [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) - Antigravity API 实现参考
+- [香蕉皮AI](https://linux.do/t/topic/1401748) - UI 设计参考

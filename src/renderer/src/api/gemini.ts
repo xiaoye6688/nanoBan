@@ -1,8 +1,13 @@
 import axios from 'axios'
 import type { ImageConfig } from '../types/gemini'
 
-// Antigravity API 配置（与 CLIProxyAPI 保持一致）
-const ANTIGRAVITY_BASE_URL = 'https://cloudcode-pa.googleapis.com'
+// Antigravity API 配置（与 CLIProxyAPI 6.6.89+ 保持一致）
+// Base URL 回退顺序：sandbox daily -> daily -> prod
+const ANTIGRAVITY_BASE_URLS = [
+  'https://daily-cloudcode-pa.sandbox.googleapis.com',
+  'https://daily-cloudcode-pa.googleapis.com',
+  'https://cloudcode-pa.googleapis.com'
+] as const
 
 interface AntigravityAuthConfig {
   accessToken: string
@@ -33,6 +38,7 @@ interface AntigravityRequest {
   userAgent: string
   project: string
   requestId: string
+  requestType: string // 新增：CLIProxyAPI 6.6.89+ 需要
   request: {
     sessionId: string
     contents: Array<{
@@ -214,13 +220,14 @@ export class GeminiAPI {
 
     const projectId = this.authConfig?.projectId || this.generateProjectId()
 
-    // Antigravity API 使用包装结构：顶层包含 model, userAgent, project, requestId
+    // Antigravity API 使用包装结构：顶层包含 model, userAgent, project, requestId, requestType
     // 实际的 Gemini 请求在 request 字段内
     return {
       model: 'gemini-3-pro-image', // API内部使用的模型名称(不是preview别名)
-      userAgent: 'antigravity',
+      userAgent: 'anthropic-code/1.0.0', // 请求体中的 userAgent 字段（非 HTTP 头）
       project: projectId,
       requestId: this.generateRequestId(),
+      requestType: 'agent', // CLIProxyAPI 6.6.89+ 需要
       request: {
         sessionId: this.normalizeSessionId(options?.sessionId, prompt),
         contents,
@@ -325,7 +332,41 @@ export class GeminiAPI {
   }
 
   /**
+   * 解析 429 响应中的 retry-after 延迟时间（秒）
+   * 参考 CLIProxyAPI 的 parseRetryDelay 实现
+   */
+  private parseRetryAfter(responseData: unknown): number | null {
+    if (!responseData || typeof responseData !== 'object') {
+      return null
+    }
+
+    const data = responseData as Record<string, unknown>
+
+    // 尝试从 error.details 中解析
+    if (data.error && typeof data.error === 'object') {
+      const error = data.error as Record<string, unknown>
+      if (Array.isArray(error.details)) {
+        for (const detail of error.details) {
+          if (detail && typeof detail === 'object') {
+            const d = detail as Record<string, unknown>
+            // 检查 retryDelay 字段（格式如 "60s"）
+            if (typeof d.retryDelay === 'string') {
+              const match = d.retryDelay.match(/^(\d+)s$/)
+              if (match) {
+                return parseInt(match[1], 10)
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return null
+  }
+
+  /**
    * 使用 Antigravity API 生成图像
+   * 支持 URL 回退和 Rate Limit 处理（参考 CLIProxyAPI 6.6.89+）
    */
   async generateImage(
     prompt: string,
@@ -342,55 +383,128 @@ export class GeminiAPI {
 
     const requestBody = this.buildAntigravityRequest(prompt, imageConfig, referenceImages, options)
 
-    const response = await axios.post(
-      `${ANTIGRAVITY_BASE_URL}/v1internal:generateContent`,
-      requestBody,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.authConfig.accessToken}`,
-          Accept: 'application/json'
-        },
-        signal: options?.signal,
-        timeout: 120000 // 2分钟超时
-      }
-    )
+    // 尝试多个 Base URL（回退机制）
+    let lastError: Error | null = null
 
-    // 解析响应
-    const data = response.data
-    const images: string[] = []
-    const thoughtSignatures: string[] = []
-    let text: string | undefined
+    for (const baseUrl of ANTIGRAVITY_BASE_URLS) {
+      try {
+        const response = await this.executeWithRetry(
+          `${baseUrl}/v1internal:generateContent`,
+          requestBody,
+          options?.signal
+        )
 
-    // 检查响应格式
-    const responseData = data.response || data
-    if (responseData.candidates && responseData.candidates.length > 0) {
-      const parts = responseData.candidates[0].content?.parts || []
+        // 解析响应
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data = response.data as any
+        const images: string[] = []
+        const thoughtSignatures: string[] = []
+        let text: string | undefined
 
-      for (const part of parts) {
-        // 保存 thoughtSignature（如果存在）
-        if (part.thoughtSignature || part.thought_signature) {
-          thoughtSignatures.push(part.thoughtSignature || part.thought_signature)
-        } else {
-          // 即使没有 signature，也要占位以保持索引对应
-          thoughtSignatures.push('')
+        // 检查响应格式
+        const responseData = data.response || data
+        if (responseData.candidates && responseData.candidates.length > 0) {
+          const parts = responseData.candidates[0].content?.parts || []
+
+          for (const part of parts) {
+            // 保存 thoughtSignature（如果存在）
+            if (part.thoughtSignature || part.thought_signature) {
+              thoughtSignatures.push(part.thoughtSignature || part.thought_signature)
+            } else {
+              // 即使没有 signature，也要占位以保持索引对应
+              thoughtSignatures.push('')
+            }
+
+            if (part.text) {
+              text = part.text
+            } else if (part.inlineData || part.inline_data) {
+              const inlineData = part.inlineData || part.inline_data
+              images.push(`data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`)
+            }
+          }
         }
 
-        if (part.text) {
-          text = part.text
-        } else if (part.inlineData || part.inline_data) {
-          const inlineData = part.inlineData || part.inline_data
-          images.push(`data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`)
+        console.log(`使用 Antigravity API 成功 (${baseUrl})`)
+        return {
+          text,
+          images,
+          thoughtSignatures: thoughtSignatures.length > 0 ? thoughtSignatures : undefined
         }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        console.warn(`Antigravity API 请求失败 (${baseUrl}):`, lastError.message)
+
+        // 如果是用户取消，直接抛出
+        if (axios.isCancel(error)) {
+          throw error
+        }
+
+        // 继续尝试下一个 URL
       }
     }
 
-    console.log('使用 Antigravity API 成功')
-    return {
-      text,
-      images,
-      thoughtSignatures: thoughtSignatures.length > 0 ? thoughtSignatures : undefined
+    // 所有 URL 都失败了
+    throw lastError || new Error('所有 Antigravity API 端点均不可用')
+  }
+
+  /**
+   * 执行请求并处理 Rate Limit（429）
+   * 参考 CLIProxyAPI 的重试逻辑
+   */
+  private async executeWithRetry(
+    url: string,
+    requestBody: AntigravityRequest,
+    signal?: AbortSignal,
+    maxRetries: number = 3
+  ): Promise<{ data: Record<string, unknown> }> {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const response = await axios.post(url, requestBody, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.authConfig!.accessToken}`,
+            Accept: 'application/json'
+            // 注意：浏览器环境不允许设置 User-Agent（受保护的请求头）
+            // Electron 渲染进程会使用默认的 Chromium User-Agent
+          },
+          signal,
+          timeout: 120000 // 2分钟超时
+        })
+
+        return response
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          // 处理 429 Rate Limit
+          if (error.response?.status === 429) {
+            const retryAfter = this.parseRetryAfter(error.response.data)
+            const waitTime = retryAfter ? retryAfter * 1000 : Math.pow(2, attempt) * 1000
+
+            console.warn(
+              `收到 429 Rate Limit，等待 ${waitTime / 1000} 秒后重试 (尝试 ${attempt + 1}/${maxRetries})`
+            )
+
+            // 等待后重试
+            await new Promise((resolve) => setTimeout(resolve, waitTime))
+            continue
+          }
+
+          // 其他 5xx 错误可以重试
+          if (error.response?.status && error.response.status >= 500) {
+            const waitTime = Math.pow(2, attempt) * 1000
+            console.warn(
+              `收到 ${error.response.status} 错误，等待 ${waitTime / 1000} 秒后重试 (尝试 ${attempt + 1}/${maxRetries})`
+            )
+            await new Promise((resolve) => setTimeout(resolve, waitTime))
+            continue
+          }
+        }
+
+        // 其他错误直接抛出
+        throw error
+      }
     }
+
+    throw new Error('请求失败，已达到最大重试次数')
   }
 }
 
